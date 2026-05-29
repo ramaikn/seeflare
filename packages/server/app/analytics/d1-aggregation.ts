@@ -162,10 +162,6 @@ interface AggregationRow {
     bounces: number;
 }
 
-/**
- * Aggregates a single day's data from WAE into D1.
- * Extracts overall counts + per-dimension breakdowns for every site.
- */
 export async function aggregateDay(
     db: D1Database,
     api: AnalyticsEngineAPI,
@@ -186,91 +182,60 @@ export async function aggregateDay(
             key !== "userAgent",
     ) as (keyof typeof ColumnMappings)[];
 
-    // Fetch all data for this day from WAE
-    const data = await api.getAllCountsByAllColumnsForAllSites(
-        columns,
-        startDateTime,
-        endDateTime,
-        tz,
-    );
+    const rangeInterval = `range:${startDateTime.toISOString()}|${endDateTime.toISOString()}`;
 
-    if (data.size === 0) {
+    // 1. Get all active sites for this day
+    const sites = await api.getSitesOrderedByHits(rangeInterval, 100);
+    const siteIds = sites.map((s) => s[0]);
+
+    if (siteIds.length === 0) {
         console.log(`No data found for ${date.format("YYYY-MM-DD")}`);
         return 0;
     }
 
-    // Build aggregation rows
     const rows: AggregationRow[] = [];
     const dateStr = date.format("YYYY-MM-DD");
 
-    // Accumulators for per-site overall totals and per-dimension breakdowns
-    const overallBySite = new Map<
-        string,
-        { views: number; visitors: number; bounces: number }
-    >();
-    const dimensionAccum = new Map<
-        string,
-        { views: number; visitors: number; bounces: number }
-    >();
-
-    data.forEach((counts, key) => {
-        const [, siteId, ...columnValues] = key;
-
-        // Accumulate overall per-site totals
-        if (!overallBySite.has(siteId)) {
-            overallBySite.set(siteId, { views: 0, visitors: 0, bounces: 0 });
-        }
-        const overall = overallBySite.get(siteId)!;
-        overall.views += counts.views;
-        overall.visitors += counts.visitors;
-        overall.bounces += counts.bounces;
-
-        // Accumulate per-dimension breakdowns
-        columns.forEach((column, index) => {
-            const value = columnValues[index]?.trim() || "";
-            // Do not skip empty values, they represent direct traffic / unknown
-
-            const dimKey = `${siteId}::${column}::${value}`;
-            if (!dimensionAccum.has(dimKey)) {
-                dimensionAccum.set(dimKey, {
-                    views: 0,
-                    visitors: 0,
-                    bounces: 0,
-                });
-            }
-            const accum = dimensionAccum.get(dimKey)!;
-            accum.views += counts.views;
-            accum.visitors += counts.visitors;
-            accum.bounces += counts.bounces;
-        });
-    });
-
-    // Build overall rows
-    overallBySite.forEach((counts, siteId) => {
+    for (const siteId of siteIds) {
+        // Fetch overall counts for the site
+        const overall = await api.getCounts(siteId, rangeInterval, tz);
+        
         rows.push({
             date: dateStr,
             site_id: siteId,
             dimension_type: "overall",
             dimension_value: "",
-            views: counts.views,
-            visitors: counts.visitors,
-            bounces: counts.bounces,
+            views: overall.views,
+            visitors: overall.visitors,
+            bounces: overall.bounces,
         });
-    });
 
-    // Build dimension rows
-    dimensionAccum.forEach((counts, dimKey) => {
-        const parts = dimKey.split("::");
-        rows.push({
-            date: dateStr,
-            site_id: parts[0],
-            dimension_type: parts[1] as DimensionType,
-            dimension_value: parts.slice(2).join("::"),
-            views: counts.views,
-            visitors: counts.visitors,
-            bounces: counts.bounces,
-        });
-    });
+        // Fetch each dimension separately to avoid 10k row limit cross-product truncation
+        for (const col of columns) {
+            const countsMap = await api.getAllCountsByColumn(
+                siteId,
+                col,
+                rangeInterval,
+                tz,
+                {}, // no filters
+                1,
+                10000 // Get up to 10k unique values per dimension
+            );
+            
+            for (const [val, counts] of Object.entries(countsMap)) {
+                // Do not skip empty values, they represent direct traffic / unknown
+                rows.push({
+                    date: dateStr,
+                    site_id: siteId,
+                    dimension_type: col as DimensionType,
+                    dimension_value: val.trim() || "",
+                    views: counts.views,
+                    visitors: counts.visitors,
+                    bounces: counts.bounces,
+                });
+            }
+        }
+    }
 
     // Write to D1 in batches (D1 supports max 100 statements per batch)
     const BATCH_SIZE = 50; // conservative to stay within limits

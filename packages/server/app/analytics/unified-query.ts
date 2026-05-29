@@ -53,14 +53,17 @@ export function computeDateRangeSplit(
     totalDays: number;
 } {
     const now = dayjs().tz(tz);
-    const waeStart = now.subtract(WAE_RETENTION_DAYS, "day");
-    const waeInterval = `${WAE_RETENTION_DAYS}d`;
+    // WAE covers the recent 90 days. We query from the start of the 89th day ago,
+    // ensuring WAE has the complete day available.
+    const waeStart = now.subtract(WAE_RETENTION_DAYS - 1, "day").startOf("day");
+    
+    // We pass absolute date strings to WAE instead of rolling intervals
+    const waeInterval = `range:${waeStart.toISOString()}|${now.toISOString()}`;
 
     let totalDays: number;
     let requestedStart: dayjs.Dayjs;
 
     if (interval === "all") {
-        // Use earliest D1 data date, or fall back to WAE retention
         if (earliestDate) {
             requestedStart = dayjs(earliestDate).tz(tz);
         } else {
@@ -75,6 +78,7 @@ export function computeDateRangeSplit(
 
     // D1 covers from requested start up to the point where WAE takes over
     const d1StartDate = requestedStart.format("YYYY-MM-DD");
+    // D1 covers exactly up to the day before WAE starts
     const d1EndDate = waeStart.subtract(1, "day").format("YYYY-MM-DD");
 
     return {
@@ -224,9 +228,25 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
+        let dimensionType = "overall";
+        let dimensionValue = "";
+
+        const supportedFilters: Array<keyof SearchFilters> = [
+            "path", "referrer", "browserName", "browserVersion", "country",
+            "deviceType", "utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent"
+        ];
+
+        for (const filter of supportedFilters) {
+            if (filters[filter]) {
+                dimensionType = filter;
+                dimensionValue = filters[filter] as string;
+                break; // Only use the first found filter
+            }
+        }
+
         // Parallel fetch from D1 and WAE
         const [d1Counts, waeCounts] = await Promise.all([
-            getD1Counts(this.db, siteId, d1StartDate, d1EndDate),
+            getD1Counts(this.db, siteId, d1StartDate, d1EndDate, dimensionType as any, dimensionValue),
             this.analyticsEngine.getCounts(siteId, waeInterval, tz, filters),
         ]);
 
@@ -265,7 +285,7 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate } = computeDateRangeSplit(
+        const { d1StartDate, d1EndDate, waeInterval } = computeDateRangeSplit(
             interval,
             tz || "UTC",
             earliestDate,
@@ -280,23 +300,53 @@ export class UnifiedAnalyticsQuery {
             filters,
         );
 
-        // WAE data for the recent period (last 90 days)
-        const waeStart = dayjs()
-            .subtract(WAE_RETENTION_DAYS, "day")
-            .startOf("day")
-            .toDate();
-        const waeEnd = endDateTime;
+        // WAE data for the recent period
+        const waeStartStr = waeInterval.substring(6).split("|")[0];
+        const waeStartObj = dayjs(waeStartStr).toDate();
+        const waeEndObj = endDateTime;
 
         const waeData = await this.analyticsEngine.getViewsGroupedByInterval(
             siteId,
             "DAY", // Always use DAY for extended ranges
-            waeStart,
-            waeEnd,
+            waeStartObj,
+            waeEndObj,
             tz,
             filters,
         );
 
-        return mergeTimeSeries(d1Data, waeData);
+        const merged = mergeTimeSeries(d1Data, waeData);
+
+        if (intervalType === "MONTH") {
+            const monthly = new Map<string, { views: number; visitors: number; bounces: number }>();
+            for (const [date, counts] of merged) {
+                const monthDate = dayjs(date).startOf("month").format("YYYY-MM-DD 00:00:00");
+                if (!monthly.has(monthDate)) {
+                    monthly.set(monthDate, { views: 0, visitors: 0, bounces: 0 });
+                }
+                const accum = monthly.get(monthDate)!;
+                accum.views += counts.views;
+                accum.visitors += counts.visitors;
+                accum.bounces += counts.bounces;
+            }
+            return Array.from(monthly.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        }
+
+        if (intervalType === "WEEK") {
+            const weekly = new Map<string, { views: number; visitors: number; bounces: number }>();
+            for (const [date, counts] of merged) {
+                const weekDate = dayjs(date).startOf("week").format("YYYY-MM-DD 00:00:00");
+                if (!weekly.has(weekDate)) {
+                    weekly.set(weekDate, { views: 0, visitors: 0, bounces: 0 });
+                }
+                const accum = weekly.get(weekDate)!;
+                accum.views += counts.views;
+                accum.visitors += counts.visitors;
+                accum.bounces += counts.bounces;
+            }
+            return Array.from(weekly.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        }
+
+        return merged;
     }
 
     /**
@@ -327,8 +377,13 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
+        const activeFilters = Object.keys(filters).filter((k) => filters[k as keyof SearchFilters]);
+        const canUseD1 =
+            activeFilters.length === 0 ||
+            (activeFilters.length === 1 && activeFilters[0] === dimensionType);
+
         const [d1Data, waeData] = await Promise.all([
-            getD1VisitorCountByColumn(
+            canUseD1 ? getD1VisitorCountByColumn(
                 this.db,
                 siteId,
                 dimensionType,
@@ -336,7 +391,7 @@ export class UnifiedAnalyticsQuery {
                 d1EndDate,
                 1, // Get all from D1, paginate after merge
                 1000,
-            ),
+            ) : Promise.resolve([] as [string, number][]),
             this.analyticsEngine.getVisitorCountByColumn(
                 siteId,
                 dimensionType as any,
@@ -379,8 +434,13 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
+        const activeFilters = Object.keys(filters).filter((k) => filters[k as keyof SearchFilters]);
+        const canUseD1 =
+            activeFilters.length === 0 ||
+            (activeFilters.length === 1 && activeFilters[0] === "path");
+
         const [d1Data, waeDataObj] = await Promise.all([
-            getD1CountByPath(this.db, siteId, d1StartDate, d1EndDate, 1, 1000),
+            canUseD1 ? getD1CountByPath(this.db, siteId, d1StartDate, d1EndDate, 1, 1000) : Promise.resolve([] as [string, number, number][]),
             this.analyticsEngine.getAllCountsByColumn(
                 siteId,
                 "path",
@@ -422,15 +482,20 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
+        const activeFilters = Object.keys(filters).filter((k) => filters[k as keyof SearchFilters]);
+        const canUseD1 =
+            activeFilters.length === 0 ||
+            (activeFilters.length === 1 && activeFilters[0] === "referrer");
+
         const [d1Data, waeDataObj] = await Promise.all([
-            getD1CountByReferrer(
+            canUseD1 ? getD1CountByReferrer(
                 this.db,
                 siteId,
                 d1StartDate,
                 d1EndDate,
                 1,
                 1000,
-            ),
+            ) : Promise.resolve([] as [string, number, number][]),
             this.analyticsEngine.getAllCountsByColumn(
                 siteId,
                 "referrer",

@@ -138,7 +138,7 @@ export function getDateTimeRange(interval: string, tz: string) {
         const daysAgo = Number(interval.split("d")[0]);
         const intervalType = getIntervalType(interval);
 
-        if (intervalType === "DAY") {
+        if (intervalType === "DAY" || intervalType === "WEEK" || intervalType === "MONTH") {
             localDateTime = localDateTime
                 .subtract(daysAgo, "day")
                 .tz(tz)

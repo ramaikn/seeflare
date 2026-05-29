@@ -53,6 +53,16 @@ export function intervalToSql(
 ) {
     let startIntervalSql = "";
     let endIntervalSql = "";
+
+    if (interval.startsWith("range:")) {
+        const parts = interval.substring(6).split("|");
+        if (parts.length === 2) {
+            startIntervalSql = `toDateTime('${dayjs(parts[0]).utc().format("YYYY-MM-DD HH:mm:ss")}')`;
+            endIntervalSql = `toDateTime('${dayjs(parts[1]).utc().format("YYYY-MM-DD HH:mm:ss")}')`;
+            return { startIntervalSql, endIntervalSql };
+        }
+    }
+    
     switch (interval) {
         case "today":
             // example: toDateTime('2024-01-07 00:00:00', 'America/New_York')
@@ -470,96 +480,6 @@ export class AnalyticsEngineAPI {
         return returnPromise;
     }
 
-    async getAllCountsByAllColumnsForAllSites(
-        columns: (keyof typeof ColumnMappings)[],
-        startDateTime: Date,
-        endDateTime: Date,
-        tz?: string,
-    ): Promise<Map<string[], AnalyticsCountResult>> {
-        const columnsStr = columns.map((c) => ColumnMappings[c]).join(", ");
-        const columnsStrWithAliases = columns
-            .map((c) => ColumnMappings[c] + " as " + c)
-            .join(", ");
-
-        const startDateTimeSql = dayjs(startDateTime)
-            .tz(tz)
-            .utc()
-            .format("YYYY-MM-DD HH:mm:ss");
-        const endDateTimeSql = dayjs(endDateTime)
-            .tz(tz)
-            .utc()
-            .format("YYYY-MM-DD HH:mm:ss");
-
-        const query = `
-            SELECT 
-                toStartOfInterval(timestamp, INTERVAL '1' DAY, '${tz || "Etc/UTC"}') as timestamp,
-                SUM(_sample_interval) as count,
-                ${ColumnMappings.siteId} as siteId, 
-                ${ColumnMappings.newVisitor} as isVisitor, 
-                ${ColumnMappings.bounce} as isBounce,
-                ${columnsStrWithAliases}
-            FROM metricsDataset
-            WHERE timestamp >= toDateTime('${startDateTimeSql}') AND timestamp < toDateTime('${endDateTimeSql}')
-            GROUP BY toStartOfInterval(timestamp, INTERVAL '1' DAY, '${tz || "Etc/UTC"}'),
-                ${ColumnMappings.siteId}, 
-                ${ColumnMappings.newVisitor}, 
-                ${ColumnMappings.bounce}, 
-                ${columnsStr}
-            ORDER BY count DESC
-        `;
-
-        type SelectionSet = {
-            timestamp: string;
-            date?: string;
-            count: number;
-            isVisitor: number;
-            isBounce: number;
-        } & {
-            [K in keyof typeof ColumnMappings]: string;
-        };
-
-        return this.query(query).then(async (response) => {
-            if (!response.ok) {
-                throw new Error(response.status + response.statusText);
-            }
-
-            const responseData =
-                (await response.json()) as AnalyticsQueryResult<SelectionSet>;
-
-            const resultMap = new Map<string, { key: string[]; counts: AnalyticsCountResult }>();
-
-            responseData.data.forEach((row) => {
-                // WAE returns timestamp instead of date, extract date (YYYY-MM-DD)
-                const dateStr = row.timestamp ? row.timestamp.substring(0, 10) : "";
-
-                const keyArray = [
-                    dateStr,
-                    row.siteId,
-                    ...columns.map((c) => String(row[c]).trim()),
-                ];
-                const stringKey = keyArray.join("::");
-
-                if (!resultMap.has(stringKey)) {
-                    resultMap.set(stringKey, {
-                        key: keyArray,
-                        counts: {
-                            views: 0,
-                            visitors: 0,
-                            bounces: 0,
-                        },
-                    });
-                }
-
-                accumulateCountsFromRowResult(resultMap.get(stringKey)!.counts, row);
-            });
-
-            const finalMap = new Map<string[], AnalyticsCountResult>();
-            for (const entry of resultMap.values()) {
-                finalMap.set(entry.key, entry.counts);
-            }
-            return finalMap;
-        });
-    }
 
     async getAllCountsByColumn<T extends keyof typeof ColumnMappings>(
         siteId: string,
