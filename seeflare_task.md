@@ -1,0 +1,38 @@
+# Seeflare: Smart Aggregation + API Implementation Tasks
+## Phase 1: D1 Database Foundation
+- [x] 1.1 Create D1 schema SQL file (`d1-schema.sql`)
+- [x] 1.2 Create D1 aggregation module (`d1-aggregation.ts`)
+- [/] 1.3 Create D1 query module (`d1-query.ts`)
+## Phase 2: Unified Query & Cache
+- [ ] 2.1 Create unified query layer (`unified-query.ts`)
+- [ ] 2.2 Create cache layer (`cache-layer.ts`)
+## Phase 3: Infrastructure & Config
+- [ ] 3.1 Update wrangler.json with D1 binding
+- [ ] 3.2 Update load-context.ts to expose D1
+- [ ] 3.3 Update utils.ts (interval handling, helpers)
+- [ ] 3.4 Update query.ts intervalToSql for extended ranges
+## Phase 4: Enhanced Cron Job
+- [ ] 4.1 Update app.ts scheduled handler (aggregation + compaction + cache purge)
+## Phase 5: Dashboard Route Updates
+- [ ] 5.1 Update resources.stats.tsx
+- [ ] 5.2 Update resources.timeseries.tsx
+- [ ] 5.3 Update resources.paths.tsx
+- [ ] 5.4 Update resources.referrer.tsx
+- [ ] 5.5 Update resources.country.tsx
+- [ ] 5.6 Update resources.browser.tsx
+- [ ] 5.7 Update resources.browserversion.tsx
+- [ ] 5.8 Update resources.device.tsx
+- [ ] 5.9 Update resources.utm-source.tsx
+- [ ] 5.10 Update resources.utm-medium.tsx
+- [ ] 5.11 Update resources.utm-campaign.tsx
+- [ ] 5.12 Update resources.utm-term.tsx
+- [ ] 5.13 Update resources.utm-content.tsx
+- [ ] 5.14 Update dashboard.tsx (MAX_RETENTION_DAYS, etc.)
+## Phase 6: API Routes
+- [ ] 6.1 Create API types (`lib/types/api.ts`)
+- [ ] 6.2 Create combined API route (`api.analytics.ts`)
+- [ ] 6.3 Create individual API routes (stats, timeseries, dimension)
+## Phase 7: Verification
+- [ ] 7.1 TypeScript type checking passes
+- [ ] 7.2 Build succeeds
+- [ ] 7.3 Create walkthrough

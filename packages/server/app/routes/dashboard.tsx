@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
     Select,
     SelectContent,
@@ -139,6 +140,23 @@ export default function Dashboard() {
     const navigation = useNavigation();
     const loading = navigation.state === "loading";
 
+    const [isDark, setIsDark] = useState(false);
+
+    useEffect(() => {
+        setIsDark(document.documentElement.classList.contains("dark"));
+    }, []);
+
+    const toggleTheme = () => {
+        const root = document.documentElement;
+        if (root.classList.contains("dark")) {
+            root.classList.remove("dark");
+            setIsDark(false);
+        } else {
+            root.classList.add("dark");
+            setIsDark(true);
+        }
+    };
+
     function changeSite(site: string) {
         // intentionally not updating prev params; don't want search
         // filters (e.g. referrer, path) to persist
@@ -182,55 +200,68 @@ export default function Dashboard() {
 
     return (
         <div style={{ fontFamily: "system-ui, sans-serif", lineHeight: "1.8" }}>
-            <div className="w-full mb-4 flex gap-4 flex-wrap">
-                <div className="lg:basis-1/5-gap-4 sm:basis-1/4-gap-4 basis-1/2-gap-4">
-                    <Select
-                        defaultValue={data.siteId}
-                        onValueChange={(site) => changeSite(site)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {/* SelectItem explodes if given an empty string for `value` so coerce to @unknown */}
-                            {data.sites.map((siteId: string) => (
-                                <SelectItem
-                                    key={`k-${siteId}`}
-                                    value={siteId || "@unknown"}
-                                >
-                                    {siteId || "(unknown)"}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="lg:basis-1/6-gap-4 sm:basis-1/5-gap-4 basis-1/3-gap-4">
-                    <Select
-                        defaultValue={data.interval}
-                        onValueChange={(interval) => changeInterval(interval)}
-                    >
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="today">Today</SelectItem>
-                            <SelectItem value="yesterday">Yesterday</SelectItem>
-                            <SelectItem value="1d">24 hours</SelectItem>
-                            <SelectItem value="7d">7 days</SelectItem>
-                            <SelectItem value="30d">30 days</SelectItem>
-                            <SelectItem value="90d">90 days</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="basis-auto flex">
-                    <div className="m-auto">
-                        <SearchFilterBadges
-                            filters={data.filters}
-                            onFilterDelete={handleFilterDelete}
-                        />
+            <div className="w-full mb-4 flex justify-between items-start gap-4 flex-wrap">
+                <div className="flex gap-4 flex-wrap flex-1">
+                    <div className="lg:basis-1/5-gap-4 sm:basis-1/4-gap-4 basis-1/2-gap-4 min-w-[150px]">
+                        <Select
+                            defaultValue={data.siteId}
+                            onValueChange={(site) => changeSite(site)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {/* SelectItem explodes if given an empty string for `value` so coerce to @unknown */}
+                                {data.sites.map((siteId: string) => (
+                                    <SelectItem
+                                        key={`k-${siteId}`}
+                                        value={siteId || "@unknown"}
+                                    >
+                                        {siteId || "(unknown)"}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
+
+                    <div className="lg:basis-1/6-gap-4 sm:basis-1/5-gap-4 basis-1/3-gap-4 min-w-[130px]">
+                        <Select
+                            defaultValue={data.interval}
+                            onValueChange={(interval) => changeInterval(interval)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="today">Today</SelectItem>
+                                <SelectItem value="yesterday">Yesterday</SelectItem>
+                                <SelectItem value="1d">24 hours</SelectItem>
+                                <SelectItem value="7d">7 days</SelectItem>
+                                <SelectItem value="30d">30 days</SelectItem>
+                                <SelectItem value="90d">90 days</SelectItem>
+                                <SelectItem value="120d">120 days</SelectItem>
+                                <SelectItem value="365d">1 year</SelectItem>
+                                <SelectItem value="1095d">3 years</SelectItem>
+                                <SelectItem value="1825d">5 years</SelectItem>
+                                <SelectItem value="all">All</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="basis-auto flex">
+                        <div className="m-auto">
+                            <SearchFilterBadges
+                                filters={data.filters}
+                                onFilterDelete={handleFilterDelete}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center">
+                    <Button variant="outline" onClick={toggleTheme} className="font-semibold">
+                        {isDark ? "Light Mode" : "Dark Mode"}
+                    </Button>
                 </div>
             </div>
 

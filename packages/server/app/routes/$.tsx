@@ -7,8 +7,8 @@ export const path = "*";
 export default function NotFound() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh]">
-      <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
-      <h2 className="text-xl font-medium text-gray-700 mb-8">Oops! Page Not Found</h2>
+      <h1 className="text-6xl font-bold text-foreground mb-4">404</h1>
+      <h2 className="text-xl font-medium text-muted-foreground mb-8">Oops! Page Not Found</h2>
       <Button asChild variant="default" size="lg">
         <Link to="/">Return Home</Link>
       </Button>

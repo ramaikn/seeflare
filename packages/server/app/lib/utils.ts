@@ -92,10 +92,26 @@ export function getIntervalType(interval: string): "DAY" | "HOUR" {
         case "7d":
         case "30d":
         case "90d":
+        case "120d":
+        case "365d":
+        case "1095d":
+        case "1825d":
+        case "all":
             return "DAY";
         default:
             return "DAY";
     }
+}
+
+/**
+ * Returns true if the given interval exceeds WAE's 90-day retention
+ * and requires D1 historical data.
+ */
+export function isExtendedInterval(interval: string): boolean {
+    if (interval === "all") return true;
+    const match = interval.match(/^(\d+)d$/);
+    if (!match) return false;
+    return parseInt(match[1], 10) > 90;
 }
 
 export function getDateTimeRange(interval: string, tz: string) {
@@ -107,6 +123,13 @@ export function getDateTimeRange(interval: string, tz: string) {
     } else if (interval === "yesterday") {
         localDateTime = localDateTime.tz(tz).startOf("day").subtract(1, "day");
         localEndDateTime = localDateTime.endOf("day").add(2, "ms");
+    } else if (interval === "all") {
+        // For "all", go back a very large number of days.
+        // The unified query layer will dynamically determine the actual earliest date.
+        localDateTime = localDateTime
+            .subtract(3650, "day") // ~10 years as a safe upper bound
+            .tz(tz)
+            .startOf("day");
     } else {
         const daysAgo = Number(interval.split("d")[0]);
         const intervalType = getIntervalType(interval);

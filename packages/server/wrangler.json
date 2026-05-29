@@ -20,6 +20,13 @@
             "binding": "DAILY_ROLLUPS"
         }
     ],
+    "d1_databases": [
+        {
+            "binding": "ANALYTICS_DB",
+            "database_name": "seeflare-analytics",
+            "database_id": "YOUR_D1_DATABASE_ID"
+        }
+    ],
     "triggers": {
         "crons": [
             "0 2 * * *"
