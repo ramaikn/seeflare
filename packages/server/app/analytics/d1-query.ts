@@ -49,9 +49,9 @@ export async function getD1Counts(
                    COALESCE(SUM(bounces), 0) as bounces
             FROM daily_aggregates
             WHERE site_id = ? AND dimension_type = ? AND dimension_value = ?
-              AND date >= ? AND date <= ?
+              AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
         `;
-        bindings = [siteId, dimensionType, dimensionValue, startDate, endDate];
+        bindings = [siteId, dimensionType, dimensionValue, startDate, startDate, endDate];
     } else {
         query = `
             SELECT COALESCE(SUM(views), 0) as views,
@@ -59,9 +59,9 @@ export async function getD1Counts(
                    COALESCE(SUM(bounces), 0) as bounces
             FROM daily_aggregates
             WHERE site_id = ? AND dimension_type = ?
-              AND date >= ? AND date <= ?
+              AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
         `;
-        bindings = [siteId, dimensionType, startDate, endDate];
+        bindings = [siteId, dimensionType, startDate, startDate, endDate];
     }
 
     const result = await db
@@ -88,20 +88,55 @@ export async function getD1ViewsGroupedByInterval(
     siteId: string,
     startDate: string,
     endDate: string,
+    filters: import("~/lib/types").SearchFilters = {},
 ): Promise<D1ViewsGroupedByInterval> {
+    // Determine dimension based on filters (Dashboard only allows one active filter at a time)
+    let dimensionType = "overall";
+    let dimensionValue = "";
+
+    const supportedFilters: Array<keyof import("~/lib/types").SearchFilters> = [
+        "path", "referrer", "browserName", "browserVersion", "country",
+        "deviceType", "utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent"
+    ];
+
+    for (const filter of supportedFilters) {
+        if (filters[filter]) {
+            dimensionType = filter;
+            dimensionValue = filters[filter] as string;
+            break; // Only use the first found filter
+        }
+    }
+
+    let query: string;
+    let bindings: string[];
+
+    if (dimensionType !== "overall") {
+        query = `SELECT date, granularity,
+                        COALESCE(SUM(views), 0) as views,
+                        COALESCE(SUM(visitors), 0) as visitors,
+                        COALESCE(SUM(bounces), 0) as bounces
+                 FROM daily_aggregates
+                 WHERE site_id = ? AND dimension_type = ? AND dimension_value = ?
+                   AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+                 GROUP BY date, granularity
+                 ORDER BY date ASC`;
+        bindings = [siteId, dimensionType, dimensionValue, startDate, startDate, endDate];
+    } else {
+        query = `SELECT date, granularity,
+                        COALESCE(SUM(views), 0) as views,
+                        COALESCE(SUM(visitors), 0) as visitors,
+                        COALESCE(SUM(bounces), 0) as bounces
+                 FROM daily_aggregates
+                 WHERE site_id = ? AND dimension_type = 'overall'
+                   AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+                 GROUP BY date, granularity
+                 ORDER BY date ASC`;
+        bindings = [siteId, startDate, startDate, endDate];
+    }
+
     const result = await db
-        .prepare(
-            `SELECT date, granularity,
-                    COALESCE(SUM(views), 0) as views,
-                    COALESCE(SUM(visitors), 0) as visitors,
-                    COALESCE(SUM(bounces), 0) as bounces
-             FROM daily_aggregates
-             WHERE site_id = ? AND dimension_type = 'overall'
-               AND date >= ? AND date <= ?
-             GROUP BY date, granularity
-             ORDER BY date ASC`,
-        )
-        .bind(siteId, startDate, endDate)
+        .prepare(query)
+        .bind(...bindings)
         .all<{
             date: string;
             granularity: string;
@@ -149,13 +184,12 @@ export async function getD1VisitorCountByColumn(
             `SELECT dimension_value, COALESCE(SUM(visitors), 0) as visitors
              FROM daily_aggregates
              WHERE site_id = ? AND dimension_type = ?
-               AND date >= ? AND date <= ?
-               AND dimension_value != ''
+               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
              GROUP BY dimension_value
              ORDER BY visitors DESC
              LIMIT ? OFFSET ?`,
         )
-        .bind(siteId, dimensionType, startDate, endDate, limit, offset)
+        .bind(siteId, dimensionType, startDate, startDate, endDate, limit, offset)
         .all<{ dimension_value: string; visitors: number }>();
 
     return (result.results || []).map((row) => [
@@ -188,13 +222,12 @@ export async function getD1AllCountsByColumn(
                     COALESCE(SUM(bounces), 0) as bounces
              FROM daily_aggregates
              WHERE site_id = ? AND dimension_type = ?
-               AND date >= ? AND date <= ?
-               AND dimension_value != ''
+               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
              GROUP BY dimension_value
              ORDER BY visitors DESC
              LIMIT ? OFFSET ?`,
         )
-        .bind(siteId, dimensionType, startDate, endDate, limit, offset)
+        .bind(siteId, dimensionType, startDate, startDate, endDate, limit, offset)
         .all<{
             dimension_value: string;
             views: number;
@@ -281,12 +314,12 @@ export async function getD1SitesOrderedByHits(
             `SELECT site_id, COALESCE(SUM(views), 0) as total_views
              FROM daily_aggregates
              WHERE dimension_type = 'overall'
-               AND date >= ? AND date <= ?
+               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
              GROUP BY site_id
              ORDER BY total_views DESC
              LIMIT ?`,
         )
-        .bind(startDate, endDate, limit)
+        .bind(startDate, startDate, endDate, limit)
         .all<{ site_id: string; total_views: number }>();
 
     return (result.results || []).map((row) => [

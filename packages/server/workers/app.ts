@@ -13,17 +13,21 @@ import { createRequestHandler, type ServerBuild } from "react-router";
 import { getLoadContext } from "../app/load-context";
 import * as build from "../build/server";
 import { extractAsArrow } from "./lib/arrow";
+import { runDailyAggregation } from "../app/analytics/d1-aggregation";
+import { purgeAllSitesCache } from "../app/analytics/cache-layer";
+import { AnalyticsEngineAPI } from "../app/analytics/query";
 
 const requestHandler = createRequestHandler(build as unknown as ServerBuild);
 
 export default {
-        async scheduled(
+    async scheduled(
         _controller: ScheduledController,
         env: Env,
         ctx: ExecutionContext,
     ) {
         if (env.CF_STORAGE_ENABLED === "false") return
         try {
+            // 1. Run existing Arrow R2 backup
             ctx.waitUntil(
                 extractAsArrow(
                     {
@@ -33,6 +37,46 @@ export default {
                     env.DAILY_ROLLUPS,
                 ),
             );
+
+            // 2. Run D1 Aggregation, Compaction, and Cache Purge if D1 is configured
+            if ((env as any).ANALYTICS_DB) {
+                ctx.waitUntil(
+                    (async () => {
+                        try {
+                            const api = new AnalyticsEngineAPI(
+                                env.CF_ACCOUNT_ID,
+                                env.CF_BEARER_TOKEN,
+                            );
+
+                            // Run aggregation + compaction
+                            const compactionDaysStr = (env as any).CF_D1_COMPACTION_DAYS;
+                            const compactionDays = compactionDaysStr
+                                ? parseInt(compactionDaysStr as string, 10) 
+                                : undefined;
+
+                            await runDailyAggregation(
+                                (env as any).ANALYTICS_DB,
+                                api,
+                                env.DAILY_ROLLUPS,
+                                compactionDays
+                            );
+
+                            // Get all sites to purge cache
+                            const db: any = (env as any).ANALYTICS_DB;
+                            const sitesResult = await db.prepare(
+                                "SELECT DISTINCT site_id FROM daily_aggregates"
+                            ).all();
+                            
+                            const siteIds = (sitesResult.results || []).map((r: any) => r.site_id);
+                            if (siteIds.length > 0) {
+                                await purgeAllSitesCache(siteIds);
+                            }
+                        } catch (aggError) {
+                            console.error("Aggregation error:", aggError);
+                        }
+                    })()
+                );
+            }
         } catch (error) {
             console.error(error);
         }

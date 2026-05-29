@@ -83,7 +83,9 @@ export function getUserTimezone(): string {
     }
 }
 
-export function getIntervalType(interval: string): "DAY" | "HOUR" {
+export type IntervalType = "HOUR" | "DAY" | "WEEK" | "MONTH";
+
+export function getIntervalType(interval: string): IntervalType {
     switch (interval) {
         case "today":
         case "yesterday":
@@ -92,12 +94,14 @@ export function getIntervalType(interval: string): "DAY" | "HOUR" {
         case "7d":
         case "30d":
         case "90d":
+            return "DAY";
         case "120d":
         case "365d":
+            return "WEEK";
         case "1095d":
         case "1825d":
         case "all":
-            return "DAY";
+            return "MONTH";
         default:
             return "DAY";
     }

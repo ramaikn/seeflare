@@ -53,7 +53,7 @@ export function hashFilters(
  */
 export async function getCached<T>(cacheKey: string): Promise<T | null> {
     try {
-        const cache = caches.default;
+        const cache = (caches as any).default;
         const request = new Request(cacheKey);
         const response = await cache.match(request);
 
@@ -77,7 +77,7 @@ export async function setCache<T>(
     ttlSeconds: number = DEFAULT_TTL_SECONDS,
 ): Promise<void> {
     try {
-        const cache = caches.default;
+        const cache = (caches as any).default;
         const request = new Request(cacheKey);
         const response = new Response(JSON.stringify(data), {
             headers: {
@@ -106,8 +106,8 @@ export async function getCachedOrFetch<T>(
     }
 
     const data = await fetcher();
-    // Fire-and-forget cache write — don't block the response
-    setCache(cacheKey, data, ttlSeconds).catch(() => {});
+    // Await cache write to prevent Cloudflare Worker runtime from killing the promise prematurely
+    await setCache(cacheKey, data, ttlSeconds);
     return { data, cacheHit: false };
 }
 
@@ -116,7 +116,7 @@ export async function getCachedOrFetch<T>(
  */
 export async function deleteCache(cacheKey: string): Promise<boolean> {
     try {
-        const cache = caches.default;
+        const cache = (caches as any).default;
         const request = new Request(cacheKey);
         return await cache.delete(request);
     } catch (err) {

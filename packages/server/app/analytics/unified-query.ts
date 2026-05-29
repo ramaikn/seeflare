@@ -75,7 +75,7 @@ export function computeDateRangeSplit(
 
     // D1 covers from requested start up to the point where WAE takes over
     const d1StartDate = requestedStart.format("YYYY-MM-DD");
-    const d1EndDate = waeStart.format("YYYY-MM-DD");
+    const d1EndDate = waeStart.subtract(1, "day").format("YYYY-MM-DD");
 
     return {
         d1StartDate,
@@ -242,7 +242,7 @@ export class UnifiedAnalyticsQuery {
      */
     async getViewsGroupedByInterval(
         siteId: string,
-        intervalType: "DAY" | "HOUR",
+        intervalType: string,
         startDateTime: Date,
         endDateTime: Date,
         tz?: string,
@@ -256,7 +256,7 @@ export class UnifiedAnalyticsQuery {
         ) {
             return this.analyticsEngine.getViewsGroupedByInterval(
                 siteId,
-                intervalType,
+                intervalType as "DAY" | "HOUR",
                 startDateTime,
                 endDateTime,
                 tz,
@@ -277,6 +277,7 @@ export class UnifiedAnalyticsQuery {
             siteId,
             d1StartDate,
             d1EndDate,
+            filters,
         );
 
         // WAE data for the recent period (last 90 days)
@@ -311,15 +312,15 @@ export class UnifiedAnalyticsQuery {
         limit: number = 10,
     ): Promise<[string, number][]> {
         if (!isExtendedInterval(interval) || !this.db) {
-            // Map dimension type to WAE method name
-            return this.getWAEVisitorCountByDimension(
+            return this.analyticsEngine.getVisitorCountByColumn(
                 siteId,
-                dimensionType,
+                dimensionType as any,
                 interval,
                 tz,
                 filters,
                 page,
-            );
+                limit
+            ) as Promise<[string, number][]>;
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
@@ -336,14 +337,15 @@ export class UnifiedAnalyticsQuery {
                 1, // Get all from D1, paginate after merge
                 1000,
             ),
-            this.getWAEVisitorCountByDimension(
+            this.analyticsEngine.getVisitorCountByColumn(
                 siteId,
-                dimensionType,
+                dimensionType as any,
                 waeInterval,
                 tz,
                 filters,
                 1,
-            ),
+                1000,
+            ) as Promise<[string, number][]>,
         ]);
 
         const merged = mergeVisitorCounts(d1Data, waeData);
@@ -377,17 +379,20 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
-        const [d1Data, waeData] = await Promise.all([
+        const [d1Data, waeDataObj] = await Promise.all([
             getD1CountByPath(this.db, siteId, d1StartDate, d1EndDate, 1, 1000),
-            this.analyticsEngine.getCountByPath(
+            this.analyticsEngine.getAllCountsByColumn(
                 siteId,
+                "path",
                 waeInterval,
                 tz,
                 filters,
                 1,
+                1000,
             ),
         ]);
 
+        const waeData = Object.entries(waeDataObj).map(([key, val]) => [key, val.visitors, val.views] as [string, number, number]);
         const merged = mergeThreeColumnCounts(d1Data, waeData);
         const startIdx = (page - 1) * 10;
         return merged.slice(startIdx, startIdx + 10);
@@ -417,7 +422,7 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
-        const [d1Data, waeData] = await Promise.all([
+        const [d1Data, waeDataObj] = await Promise.all([
             getD1CountByReferrer(
                 this.db,
                 siteId,
@@ -426,15 +431,18 @@ export class UnifiedAnalyticsQuery {
                 1,
                 1000,
             ),
-            this.analyticsEngine.getCountByReferrer(
+            this.analyticsEngine.getAllCountsByColumn(
                 siteId,
+                "referrer",
                 waeInterval,
                 tz,
                 filters,
                 1,
+                1000,
             ),
         ]);
 
+        const waeData = Object.entries(waeDataObj).map(([key, val]) => [key, val.visitors, val.views] as [string, number, number]);
         const merged = mergeThreeColumnCounts(d1Data, waeData);
         const startIdx = (page - 1) * 10;
         return merged.slice(startIdx, startIdx + 10);
@@ -572,9 +580,10 @@ export class UnifiedAnalyticsQuery {
         const { d1StartDate, d1EndDate, waeInterval } =
             computeDateRangeSplit(interval, "UTC", earliestDate);
 
+        const fetchLimit = Math.max(limit || 10, 100);
         const [d1Sites, waeSites] = await Promise.all([
-            getD1SitesOrderedByHits(this.db, d1StartDate, d1EndDate, limit),
-            this.analyticsEngine.getSitesOrderedByHits(waeInterval, limit),
+            getD1SitesOrderedByHits(this.db, d1StartDate, d1EndDate, fetchLimit),
+            this.analyticsEngine.getSitesOrderedByHits(waeInterval, fetchLimit),
         ]);
 
         return mergeSiteLists(d1Sites, waeSites).slice(0, limit || 10);
@@ -588,40 +597,6 @@ export class UnifiedAnalyticsQuery {
     }
 
     // ------------------------------------------------------------------
-    // Private WAE dimension dispatch
+    // (End of UnifiedAnalyticsQuery)
     // ------------------------------------------------------------------
-
-    private async getWAEVisitorCountByDimension(
-        siteId: string,
-        dimensionType: DimensionType,
-        interval: string,
-        tz?: string,
-        filters: SearchFilters = {},
-        page: number = 1,
-    ): Promise<[string, number][]> {
-        switch (dimensionType) {
-            case "country":
-                return this.analyticsEngine.getCountByCountry(siteId, interval, tz, filters, page);
-            case "browserName":
-                return this.analyticsEngine.getCountByBrowser(siteId, interval, tz, filters, page);
-            case "browserVersion":
-                return this.analyticsEngine.getCountByBrowserVersion(siteId, interval, tz, filters, page);
-            case "deviceModel":
-                return this.analyticsEngine.getCountByDeviceModel(siteId, interval, tz, filters, page);
-            case "deviceType":
-                return this.analyticsEngine.getCountByDeviceType(siteId, interval, tz, filters, page);
-            case "utmSource":
-                return this.analyticsEngine.getCountByUtmSource(siteId, interval, tz, filters, page);
-            case "utmMedium":
-                return this.analyticsEngine.getCountByUtmMedium(siteId, interval, tz, filters, page);
-            case "utmCampaign":
-                return this.analyticsEngine.getCountByUtmCampaign(siteId, interval, tz, filters, page);
-            case "utmTerm":
-                return this.analyticsEngine.getCountByUtmTerm(siteId, interval, tz, filters, page);
-            case "utmContent":
-                return this.analyticsEngine.getCountByUtmContent(siteId, interval, tz, filters, page);
-            default:
-                return [];
-        }
-    }
 }

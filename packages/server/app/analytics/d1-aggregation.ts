@@ -175,9 +175,15 @@ export async function aggregateDay(
     const startDateTime = date.startOf("day").toDate();
     const endDateTime = date.endOf("day").toDate();
 
-    // Dimension columns to extract (excludes siteId, newVisitor, bounce — those are meta)
+    // Dimension columns to extract (excludes meta and high-cardinality fields)
     const columns = Object.keys(ColumnMappings).filter(
-        (key) => key !== "siteId" && key !== "newVisitor" && key !== "bounce" && key !== "newSession",
+        (key) =>
+            key !== "siteId" &&
+            key !== "newVisitor" &&
+            key !== "bounce" &&
+            key !== "newSession" &&
+            key !== "host" &&
+            key !== "userAgent",
     ) as (keyof typeof ColumnMappings)[];
 
     // Fetch all data for this day from WAE
@@ -222,9 +228,9 @@ export async function aggregateDay(
         // Accumulate per-dimension breakdowns
         columns.forEach((column, index) => {
             const value = columnValues[index]?.trim() || "";
-            if (!value) return; // skip empty dimension values
+            // Do not skip empty values, they represent direct traffic / unknown
 
-            const dimKey = `${siteId}:${column}:${value}`;
+            const dimKey = `${siteId}::${column}::${value}`;
             if (!dimensionAccum.has(dimKey)) {
                 dimensionAccum.set(dimKey, {
                     views: 0,
@@ -254,12 +260,12 @@ export async function aggregateDay(
 
     // Build dimension rows
     dimensionAccum.forEach((counts, dimKey) => {
-        const [siteId, dimensionType, dimensionValue] = dimKey.split(":");
+        const parts = dimKey.split("::");
         rows.push({
             date: dateStr,
-            site_id: siteId,
-            dimension_type: dimensionType as DimensionType,
-            dimension_value: dimensionValue,
+            site_id: parts[0],
+            dimension_type: parts[1] as DimensionType,
+            dimension_value: parts.slice(2).join("::"),
             views: counts.views,
             visitors: counts.visitors,
             bounces: counts.bounces,
@@ -382,9 +388,9 @@ export async function backfillFromR2(
                             (
                                 table.getChild(col)?.get(i) as string
                             )?.trim() ?? "";
-                        if (!value) continue;
+                        // Do not skip empty values, they represent direct traffic / unknown
 
-                        const dimKey = `${siteId}:${col}:${value}`;
+                        const dimKey = `${siteId}::${col}::${value}`;
                         if (!dimensionAccum.has(dimKey)) {
                             dimensionAccum.set(dimKey, {
                                 views: 0,
@@ -411,12 +417,12 @@ export async function backfillFromR2(
                 });
 
                 dimensionAccum.forEach((counts, dimKey) => {
-                    const parts = dimKey.split(":");
+                    const parts = dimKey.split("::");
                     rows.push({
                         date: dateStr,
                         site_id: parts[0],
                         dimension_type: parts[1] as DimensionType,
-                        dimension_value: parts.slice(2).join(":"), // Handle values containing ':'
+                        dimension_value: parts.slice(2).join("::"), // Handle values containing '::'
                         ...counts,
                     });
                 });

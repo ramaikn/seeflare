@@ -63,16 +63,22 @@ export function intervalToSql(
             startIntervalSql = `toDateTime('${dayjs().tz(tz).startOf("day").utc().subtract(1, "day").format("YYYY-MM-DD HH:mm:ss")}')`;
             endIntervalSql = `toDateTime('${dayjs().tz(tz).startOf("day").utc().format("YYYY-MM-DD HH:mm:ss")}')`;
             break;
-        case "1d":
-        case "7d":
-        case "30d":
-        case "90d":
-            startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '${interval.split("d")[0]}' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+        case "all":
+            // "all" goes back a very large number of days (e.g. 10 years). D1 handles most of it, but WAE handles recent 90 days.
+            // If passed here directly without D1, it will query as far back as WAE stores data.
+            startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '3650' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
             endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
             break;
         default:
-            startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '1' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
-            endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+            const match = interval.match(/^(\d+)d$/);
+            if (match) {
+                startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '${match[1]}' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+                endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+            } else {
+                startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '1' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+                endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+            }
+            break;
     }
     return { startIntervalSql, endIntervalSql };
 }
@@ -486,7 +492,7 @@ export class AnalyticsEngineAPI {
 
         const query = `
             SELECT 
-                timestamp,
+                toStartOfInterval(timestamp, INTERVAL '1' DAY, '${tz || "Etc/UTC"}') as timestamp,
                 SUM(_sample_interval) as count,
                 ${ColumnMappings.siteId} as siteId, 
                 ${ColumnMappings.newVisitor} as isVisitor, 
@@ -494,7 +500,7 @@ export class AnalyticsEngineAPI {
                 ${columnsStrWithAliases}
             FROM metricsDataset
             WHERE timestamp >= toDateTime('${startDateTimeSql}') AND timestamp < toDateTime('${endDateTimeSql}')
-            GROUP BY timestamp,
+            GROUP BY toStartOfInterval(timestamp, INTERVAL '1' DAY, '${tz || "Etc/UTC"}'),
                 ${ColumnMappings.siteId}, 
                 ${ColumnMappings.newVisitor}, 
                 ${ColumnMappings.bounce}, 
@@ -503,7 +509,8 @@ export class AnalyticsEngineAPI {
         `;
 
         type SelectionSet = {
-            date: string;
+            timestamp: string;
+            date?: string;
             count: number;
             isVisitor: number;
             isBounce: number;
@@ -519,26 +526,38 @@ export class AnalyticsEngineAPI {
             const responseData =
                 (await response.json()) as AnalyticsQueryResult<SelectionSet>;
 
+            const resultMap = new Map<string, { key: string[]; counts: AnalyticsCountResult }>();
 
-            return responseData.data.reduce((acc, row) => {
-                // key is the comma joined string of siteId + all columns
-                const key = [
-                    row.date,
+            responseData.data.forEach((row) => {
+                // WAE returns timestamp instead of date, extract date (YYYY-MM-DD)
+                const dateStr = row.timestamp ? row.timestamp.substring(0, 10) : "";
+
+                const keyArray = [
+                    dateStr,
                     row.siteId,
                     ...columns.map((c) => String(row[c]).trim()),
                 ];
+                const stringKey = keyArray.join("::");
 
-                if (!acc.has(key)) {
-                    acc.set(key, {
-                        views: 0,
-                        visitors: 0,
-                        bounces: 0,
-                    } as AnalyticsCountResult);
+                if (!resultMap.has(stringKey)) {
+                    resultMap.set(stringKey, {
+                        key: keyArray,
+                        counts: {
+                            views: 0,
+                            visitors: 0,
+                            bounces: 0,
+                        },
+                    });
                 }
 
-                accumulateCountsFromRowResult(acc.get(key)!, row);
-                return acc;
-            }, new Map<string[], AnalyticsCountResult>());
+                accumulateCountsFromRowResult(resultMap.get(stringKey)!.counts, row);
+            });
+
+            const finalMap = new Map<string[], AnalyticsCountResult>();
+            for (const entry of resultMap.values()) {
+                finalMap.set(entry.key, entry.counts);
+            }
+            return finalMap;
         });
     }
 

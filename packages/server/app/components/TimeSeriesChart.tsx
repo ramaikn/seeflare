@@ -72,6 +72,12 @@ export default function TimeSeriesChart({
         const dateObj = dateStringToLocalDateObj(date);
 
         switch (intervalType) {
+            case "MONTH":
+                return dateObj.toLocaleDateString("en-us", {
+                    month: "short",
+                    year: "numeric",
+                });
+            case "WEEK":
             case "DAY":
                 return dateObj.toLocaleDateString("en-us", {
                     weekday: "short",
@@ -84,7 +90,10 @@ export default function TimeSeriesChart({
                     minute: "numeric",
                 });
             default:
-                throw new Error("Invalid interval type");
+                return dateObj.toLocaleDateString("en-us", {
+                    month: "short",
+                    day: "numeric",
+                });
         }
     }
 
