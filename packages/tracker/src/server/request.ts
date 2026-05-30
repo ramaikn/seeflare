@@ -5,6 +5,7 @@ export async function makeRequest(
     url: string,
     params: CollectRequestParams,
     timeout = 1000,
+    userAgent?: string,
 ): Promise<void> {
     try {
         const fullUrl = buildCollectUrl(url, params, true); // Filter empty strings for server
@@ -16,7 +17,7 @@ export async function makeRequest(
             method: "GET",
             headers: {
                 "Content-Type": "text/plain",
-                "User-Agent": "Counterscale-Tracker-Server/3.2.0",
+                "User-Agent": userAgent || "Counterscale-Tracker-Server/3.2.0",
             },
             signal: controller.signal,
         });

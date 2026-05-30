@@ -153,3 +153,16 @@ export function maskBrowserVersion(version?: string) {
 
     return version;
 }
+
+export function checkHasSufficientBounceData(
+    earliestEvent: Date | null,
+    earliestBounce: Date | null,
+    startDate: Date
+): boolean {
+    return (
+        earliestBounce !== null &&
+        earliestEvent !== null &&
+        (earliestEvent.getTime() === earliestBounce.getTime() ||
+            earliestBounce < startDate)
+    );
+}

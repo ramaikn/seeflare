@@ -99,12 +99,19 @@ export async function getD1ViewsGroupedByInterval(
         "deviceType", "utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent"
     ];
 
+    let activeFilterCount = 0;
     for (const filter of supportedFilters) {
         if (filters[filter]) {
-            dimensionType = filter;
-            dimensionValue = filters[filter] as string;
-            break; // Only use the first found filter
+            if (activeFilterCount === 0) {
+                dimensionType = filter;
+                dimensionValue = filters[filter] as string;
+            }
+            activeFilterCount++;
         }
+    }
+
+    if (activeFilterCount > 1) {
+        return [];
     }
 
     let query: string;

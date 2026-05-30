@@ -140,6 +140,21 @@ export async function getEarliestDataDate(
 }
 
 // ------------------------------------------------------------------
+// R2 Helpers
+// ------------------------------------------------------------------
+
+export async function listAllR2Objects(bucket: R2Bucket, options?: any) {
+    let cursor: string | undefined = undefined;
+    const allObjects = [];
+    do {
+        const result = await bucket.list({ ...options, cursor });
+        allObjects.push(...result.objects);
+        cursor = result.truncated ? result.cursor : undefined;
+    } while (cursor);
+    return allObjects;
+}
+
+// ------------------------------------------------------------------
 // Daily Aggregation (WAE → D1)
 // ------------------------------------------------------------------
 
@@ -552,8 +567,8 @@ export async function runDailyAggregation(
         const listResult = await bucket.list({ limit: 1 });
         if (listResult.objects.length > 0) {
             // Find date range from R2
-            const allObjects = await bucket.list({ limit: 1000 });
-            const dates = allObjects.objects
+            const allObjects = await listAllR2Objects(bucket);
+            const dates = allObjects
                 .map((obj) => {
                     const match = obj.key.match(
                         /analytics-(\d{4}-\d{2}-\d{2})\.arrow/,

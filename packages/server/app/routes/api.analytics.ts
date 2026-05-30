@@ -1,6 +1,6 @@
 import { type LoaderFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth";
-import { getFiltersFromSearchParams, getIntervalType, getDateTimeRange } from "~/lib/utils";
+import { getFiltersFromSearchParams, getIntervalType, getDateTimeRange, checkHasSufficientBounceData } from "~/lib/utils";
 import { isExtendedInterval } from "~/analytics/unified-query";
 import { buildCacheKey, getCachedOrFetch, hashFilters } from "~/analytics/cache-layer";
 import type { ApiAnalyticsResponse, ApiDimensionEntry } from "~/lib/types/api";
@@ -72,11 +72,11 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
         ]);
 
         const { earliestEvent, earliestBounce } = earliestEvents;
-        const hasSufficientBounceData =
-            earliestBounce !== null &&
-            earliestEvent !== null &&
-            (earliestEvent.getTime() == earliestBounce.getTime() ||
-                earliestBounce < startDate);
+        const hasSufficientBounceData = checkHasSufficientBounceData(
+            earliestEvent,
+            earliestBounce,
+            startDate
+        );
 
         const bounceRate =
             hasSufficientBounceData && counts.visitors > 0

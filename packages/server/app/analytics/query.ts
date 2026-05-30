@@ -147,6 +147,11 @@ function generateEmptyRowsOverInterval(
     return initialRows;
 }
 
+export function toWaeSqlString(value: any): string {
+    const sanitized = String(value).replace(/'/g, "''");
+    return `'${sanitized}'`;
+}
+
 function filtersToSql(filters: SearchFilters) {
     const supportedFilters: Array<keyof SearchFilters> = [
         "path",
@@ -165,10 +170,10 @@ function filtersToSql(filters: SearchFilters) {
     let filterStr = "";
     supportedFilters.forEach((filter) => {
         if (Object.hasOwnProperty.call(filters, filter)) {
-            // Escape single quotes to prevent SQL injection via CF Analytics Engine API.
-            // Parameterized queries are not supported by WAE; escaping is the only defense.
-            const sanitized = String(filters[filter]).replace(/'/g, "\\'");
-            filterStr += `AND ${ColumnMappings[filter]} = '${sanitized}'`;
+            const mappedColumn = ColumnMappings[filter];
+            if (mappedColumn) {
+                filterStr += ` AND ${mappedColumn} = ${toWaeSqlString(filters[filter])}`;
+            }
         }
     });
     return filterStr;
@@ -268,7 +273,7 @@ export class AnalyticsEngineAPI {
             FROM metricsDataset
             WHERE timestamp >= toDateTime('${localStartTime.format("YYYY-MM-DD HH:mm:ss")}')
 								AND timestamp < toDateTime('${localEndTime.format("YYYY-MM-DD HH:mm:ss")}')
-                AND ${ColumnMappings.siteId} = '${siteId}'
+                AND ${ColumnMappings.siteId} = ${toWaeSqlString(siteId)}
                 ${filterStr}
             GROUP BY _bucket, isVisitor, isBounce
             ORDER BY _bucket ASC`;
@@ -375,7 +380,7 @@ export class AnalyticsEngineAPI {
             FROM metricsDataset
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
                 ${filterStr}
-            AND ${siteIdColumn} = '${siteId}'
+            AND ${siteIdColumn} = ${toWaeSqlString(siteId)}
             GROUP BY isVisitor, isBounce
             ORDER BY isVisitor, isBounce ASC`;
 
@@ -440,7 +445,7 @@ export class AnalyticsEngineAPI {
             FROM metricsDataset
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
                 AND ${ColumnMappings.newVisitor} = 1
-                AND ${ColumnMappings.siteId} = '${siteId}'
+                AND ${ColumnMappings.siteId} = ${toWaeSqlString(siteId)}
                 ${filterStr}
             GROUP BY ${_column}
             ORDER BY count DESC
@@ -503,7 +508,7 @@ export class AnalyticsEngineAPI {
             FROM metricsDataset
             WHERE timestamp >= toDateTime('${localStartTime.format("YYYY-MM-DD HH:mm:ss")}')
                 AND timestamp < toDateTime('${localEndTime.format("YYYY-MM-DD HH:mm:ss")}')
-                AND ${ColumnMappings.siteId} = '${siteId}'
+                AND ${ColumnMappings.siteId} = ${toWaeSqlString(siteId)}
             GROUP BY key, isVisitor, isBounce
             LIMIT 10000
         `;
@@ -572,7 +577,7 @@ export class AnalyticsEngineAPI {
         const _column = ColumnMappings[column];
 
         if (keys.length > 0) {
-            filterStr += ` AND ${_column} IN (${keys.map((key) => `'${key}'`).join(", ")})`;
+            filterStr += ` AND ${_column} IN (${keys.map((key) => toWaeSqlString(key)).join(", ")})`;
         }
 
         const query = `
@@ -582,7 +587,7 @@ export class AnalyticsEngineAPI {
             FROM metricsDataset
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
                 AND ${ColumnMappings.newVisitor} = 0
-                AND ${ColumnMappings.siteId} = '${siteId}'
+                AND ${ColumnMappings.siteId} = ${toWaeSqlString(siteId)}
                 ${filterStr}
             GROUP BY ${_column}, ${ColumnMappings.newVisitor}
             ORDER BY count DESC
@@ -611,12 +616,9 @@ export class AnalyticsEngineAPI {
                     const responseData =
                         (await response.json()) as AnalyticsQueryResult<SelectionSet>;
 
-                    // since CF AE doesn't support OFFSET clauses, we select up to LIMIT and
-                    // then slice that into the individual requested page
-                    const pageData = responseData.data.slice(
-                        limit * (page - 1),
-                        limit * page,
-                    );
+                    // The query is already filtered by IN (keys) for the requested page,
+                    // so we do not slice the data again.
+                    const pageData = responseData.data;
 
                     // remap visitor counts into SelectionSet objects, then insert into
                     // the query results (pageData)
@@ -626,6 +628,17 @@ export class AnalyticsEngineAPI {
                             count: value,
                             isVisitor: 1,
                         } as SelectionSet);
+                    });
+
+                    // Initialize the result object with keys from visitorCountByColumn
+                    // to preserve the ordering of the first query.
+                    const initialResult: Record<string, AnalyticsCountResult> = {};
+                    visitorCountByColumn.forEach(([key]) => {
+                        initialResult[key as string] = {
+                            views: 0,
+                            visitors: 0,
+                            bounces: 0,
+                        };
                     });
 
                     const result = pageData.reduce(
@@ -642,7 +655,7 @@ export class AnalyticsEngineAPI {
                             accumulateCountsFromRowResult(acc[key], row);
                             return acc;
                         },
-                        {} as Record<string, AnalyticsCountResult>,
+                        initialResult,
                     );
 
                     resolve(result);
@@ -928,57 +941,44 @@ export class AnalyticsEngineAPI {
         earliestEvent: Date | null;
         earliestBounce: Date | null;
     }> {
-        const query = `
-            SELECT
-                MIN(timestamp) as earliestEvent,
-                ${ColumnMappings.bounce} as isBounce
+        const eventQuery = `
+            SELECT MIN(timestamp) as earliestEvent
             FROM metricsDataset
-            WHERE ${ColumnMappings.siteId} = '${siteId}'
-            GROUP by isBounce
+            WHERE ${ColumnMappings.siteId} = ${toWaeSqlString(siteId)}
         `;
 
-        type SelectionSet = {
-            earliestEvent: string;
-            isBounce: number;
+        const bounceQuery = `
+            SELECT MIN(timestamp) as earliestBounce
+            FROM metricsDataset
+            WHERE ${ColumnMappings.siteId} = ${toWaeSqlString(siteId)}
+                AND ${ColumnMappings.bounce} = 1
+        `;
+
+        const [eventRes, bounceRes] = await Promise.all([
+            this.query(eventQuery),
+            this.query(bounceQuery),
+        ]);
+
+        if (!eventRes.ok) {
+            throw new Error(`WAE API error on eventQuery: ${eventRes.status} ${eventRes.statusText}`);
+        }
+        if (!bounceRes.ok) {
+            throw new Error(`WAE API error on bounceQuery: ${bounceRes.status} ${bounceRes.statusText}`);
+        }
+
+        type EventSelectionSet = { earliestEvent: string };
+        type BounceSelectionSet = { earliestBounce: string };
+
+        const eventData = (await eventRes.json()) as AnalyticsQueryResult<EventSelectionSet>;
+        const bounceData = (await bounceRes.json()) as AnalyticsQueryResult<BounceSelectionSet>;
+
+        const earliestEventStr = eventData.data.length > 0 ? eventData.data[0].earliestEvent : null;
+        const earliestBounceStr = bounceData.data.length > 0 ? bounceData.data[0].earliestBounce : null;
+
+        return {
+            earliestEvent: earliestEventStr ? new Date(earliestEventStr) : null,
+            earliestBounce: earliestBounceStr ? new Date(earliestBounceStr) : null,
         };
-        const queryResult = this.query(query);
-        const returnPromise = new Promise<{
-            earliestEvent: Date | null;
-            earliestBounce: Date | null;
-        }>((resolve, reject) => {
-            (async () => {
-                const response = await queryResult;
-
-                if (!response.ok) {
-                    reject(response.statusText);
-                    return;
-                }
-
-                const responseData =
-                    (await response.json()) as AnalyticsQueryResult<SelectionSet>;
-
-                const data = responseData.data;
-
-                const earliestEvent = data.find(
-                    (row) => row["isBounce"] === 0,
-                )?.earliestEvent;
-
-                const earliestBounce = data.find(
-                    (row) => row["isBounce"] === 1,
-                )?.earliestEvent;
-
-                resolve({
-                    earliestEvent: earliestEvent
-                        ? new Date(earliestEvent)
-                        : null,
-                    earliestBounce: earliestBounce
-                        ? new Date(earliestBounce)
-                        : null,
-                });
-            })();
-        });
-
-        return returnPromise;
     }
     async getAllCountsByAllColumnsForAllSites(
         columns: (keyof typeof ColumnMappings)[],

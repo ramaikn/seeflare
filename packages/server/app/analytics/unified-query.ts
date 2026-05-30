@@ -20,6 +20,28 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 /**
+ * Helper to get active filters from SearchFilters object.
+ */
+export function getActiveFilters(filters: SearchFilters): Array<keyof SearchFilters> {
+    const supportedFilters: Array<keyof SearchFilters> = [
+        "path", "referrer", "browserName", "browserVersion", "country",
+        "deviceType", "utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent"
+    ];
+    return supportedFilters.filter((k) => !!filters[k]);
+}
+
+/**
+ * Returns true if D1 can be used for the given filters.
+ * D1 does not support multiple dimension filters simultaneously.
+ */
+export function canUseD1ForFilters(filters: SearchFilters, dimensionType?: string): boolean {
+    const active = getActiveFilters(filters);
+    if (active.length > 1) return false;
+    if (dimensionType && active.length === 1 && active[0] !== dimensionType) return false;
+    return true;
+}
+
+/**
  * Maximum number of days WAE retains data.
  */
 const WAE_RETENTION_DAYS = 90;
@@ -51,6 +73,7 @@ export function computeDateRangeSplit(
     d1EndDate: string;
     waeInterval: string;
     totalDays: number;
+    hasD1Range: boolean;
 } {
     // Use UTC to ensure absolute alignment with D1 daily aggregates!
     const nowUtc = dayjs().utc();
@@ -88,6 +111,7 @@ export function computeDateRangeSplit(
         d1EndDate,
         waeInterval,
         totalDays,
+        hasD1Range: requestedStart.isBefore(waeStartUtc),
     };
 }
 
@@ -252,28 +276,24 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate, waeInterval } =
+        const { d1StartDate, d1EndDate, waeInterval, hasD1Range } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
+
+        const canUseD1 = canUseD1ForFilters(filters) && hasD1Range;
+        const activeFilters = getActiveFilters(filters);
 
         let dimensionType = "overall";
         let dimensionValue = "";
 
-        const supportedFilters: Array<keyof SearchFilters> = [
-            "path", "referrer", "browserName", "browserVersion", "country",
-            "deviceType", "utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent"
-        ];
-
-        for (const filter of supportedFilters) {
-            if (filters[filter]) {
-                dimensionType = filter;
-                dimensionValue = filters[filter] as string;
-                break; // Only use the first found filter
-            }
+        if (activeFilters.length === 1) {
+            const filterKey = activeFilters[0];
+            dimensionType = filterKey;
+            dimensionValue = filters[filterKey] as string;
         }
 
         // Parallel fetch from D1 and WAE
         const [d1Counts, waeCounts] = await Promise.all([
-            getD1Counts(this.db, siteId, d1StartDate, d1EndDate, dimensionType as any, dimensionValue),
+            canUseD1 ? getD1Counts(this.db, siteId, d1StartDate, d1EndDate, dimensionType as any, dimensionValue) : Promise.resolve({ views: 0, visitors: 0, bounces: 0 }),
             this.analyticsEngine.getCounts(siteId, waeInterval, tz, filters),
         ]);
 
@@ -312,20 +332,22 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate, waeInterval } = computeDateRangeSplit(
+        const { d1StartDate, d1EndDate, waeInterval, hasD1Range } = computeDateRangeSplit(
             interval,
             tz || "UTC",
             earliestDate,
         );
 
+        const canUseD1 = canUseD1ForFilters(filters) && hasD1Range;
+
         // D1 data for historical period
-        const d1Data = await getD1ViewsGroupedByInterval(
+        const d1Data = canUseD1 ? await getD1ViewsGroupedByInterval(
             this.db,
             siteId,
             d1StartDate,
             d1EndDate,
             filters,
-        );
+        ) : [];
 
         // WAE data for the recent period
         const waeStartStr = waeInterval.substring(6).split("|")[0];
@@ -403,13 +425,10 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate, waeInterval } =
+        const { d1StartDate, d1EndDate, waeInterval, hasD1Range } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
-        const activeFilters = Object.keys(filters).filter((k) => filters[k as keyof SearchFilters]);
-        const canUseD1 =
-            activeFilters.length === 0 ||
-            (activeFilters.length === 1 && activeFilters[0] === dimensionType);
+        const canUseD1 = canUseD1ForFilters(filters, dimensionType) && hasD1Range;
 
         const [d1Data, waeData] = await Promise.all([
             canUseD1 ? getD1VisitorCountByColumn(
@@ -460,13 +479,10 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate, waeInterval } =
+        const { d1StartDate, d1EndDate, waeInterval, hasD1Range } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
-        const activeFilters = Object.keys(filters).filter((k) => filters[k as keyof SearchFilters]);
-        const canUseD1 =
-            activeFilters.length === 0 ||
-            (activeFilters.length === 1 && activeFilters[0] === "path");
+        const canUseD1 = canUseD1ForFilters(filters, "path") && hasD1Range;
 
         const [d1Data, waeDataObj] = await Promise.all([
             canUseD1 ? getD1CountByPath(this.db, siteId, d1StartDate, d1EndDate, 1, 1000) : Promise.resolve([] as [string, number, number][]),
@@ -508,13 +524,10 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate, waeInterval } =
+        const { d1StartDate, d1EndDate, waeInterval, hasD1Range } =
             computeDateRangeSplit(interval, tz || "UTC", earliestDate);
 
-        const activeFilters = Object.keys(filters).filter((k) => filters[k as keyof SearchFilters]);
-        const canUseD1 =
-            activeFilters.length === 0 ||
-            (activeFilters.length === 1 && activeFilters[0] === "referrer");
+        const canUseD1 = canUseD1ForFilters(filters, "referrer") && hasD1Range;
 
         const [d1Data, waeDataObj] = await Promise.all([
             canUseD1 ? getD1CountByReferrer(
@@ -671,12 +684,12 @@ export class UnifiedAnalyticsQuery {
         }
 
         const earliestDate = await getEarliestDataDate(this.db);
-        const { d1StartDate, d1EndDate, waeInterval } =
+        const { d1StartDate, d1EndDate, waeInterval, hasD1Range } =
             computeDateRangeSplit(interval, "UTC", earliestDate);
 
         const fetchLimit = Math.max(limit || 10, 100);
         const [d1Sites, waeSites] = await Promise.all([
-            getD1SitesOrderedByHits(this.db, d1StartDate, d1EndDate, fetchLimit),
+            hasD1Range ? getD1SitesOrderedByHits(this.db, d1StartDate, d1EndDate, fetchLimit) : Promise.resolve([] as [string, number][]),
             this.analyticsEngine.getSitesOrderedByHits(waeInterval, fetchLimit),
         ]);
 

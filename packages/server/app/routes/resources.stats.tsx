@@ -3,6 +3,7 @@ import {
     getDateTimeRange,
     getFiltersFromSearchParams,
     paramsFromUrl,
+    checkHasSufficientBounceData,
 } from "~/lib/utils";
 import { useEffect } from "react";
 import { useFetcher } from "react-router";
@@ -45,7 +46,11 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
         // data recorded, and determine if our dataset is "complete" for the given query interval.
 
         // Always show bounce rate if it is calculated.
-        const hasSufficientBounceData = true;
+        const hasSufficientBounceData = checkHasSufficientBounceData(
+            earliestEvent,
+            earliestBounce,
+            startDate
+        );
 
         const bounceRate =
             counts.visitors > 0 ? counts.bounces / counts.visitors : undefined;

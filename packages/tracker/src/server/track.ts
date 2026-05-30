@@ -95,5 +95,7 @@ export async function trackPageview(
         "1",
     );
 
-    await makeRequest(client.reporterUrl, requestParams, client.timeout);
+    const userAgent = opts.userAgent || client.userAgent;
+
+    await makeRequest(client.reporterUrl, requestParams, client.timeout, userAgent);
 }

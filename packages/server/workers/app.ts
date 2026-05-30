@@ -13,7 +13,7 @@ import { createRequestHandler, type ServerBuild } from "react-router";
 import { getLoadContext } from "../app/load-context";
 import * as build from "../build/server";
 import { extractAsArrow } from "./lib/arrow";
-import { runDailyAggregation } from "../app/analytics/d1-aggregation";
+import { runDailyAggregation, listAllR2Objects } from "../app/analytics/d1-aggregation";
 import { AnalyticsEngineAPI } from "../app/analytics/query";
 
 const requestHandler = createRequestHandler(build as unknown as ServerBuild);
@@ -71,8 +71,8 @@ export default {
                         try {
                             const cutoffDate = new Date();
                             cutoffDate.setDate(cutoffDate.getDate() - 95);
-                            const objects = await env.DAILY_ROLLUPS.list({ limit: 1000 });
-                            for (const obj of objects.objects) {
+                            const objects = await listAllR2Objects(env.DAILY_ROLLUPS);
+                            for (const obj of objects) {
                                 const match = obj.key.match(
                                     /analytics-(\d{4}-\d{2}-\d{2})\.arrow/,
                                 );
