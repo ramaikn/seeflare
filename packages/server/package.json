@@ -29,7 +29,7 @@
         "typecheck": "react-router typegen && tsc",
         "prepare": "husky",
         "types:gen": "wrangler types",
-        "copytracker": "cp ../tracker/dist/loader/tracker.js ./public/tracker.js"
+        "copytracker": "node -e \"const fs = require('fs'); fs.copyFileSync('../tracker/dist/loader/tracker.js', './public/tracker.js');\""
     },
     "dependencies": {
         "@cloudflare/kv-asset-handler": "^0.3.3",

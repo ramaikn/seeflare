@@ -107,6 +107,22 @@ export const Layout = ({ children = [] }: { children: React.ReactNode }) => {
                 />
                 <Meta />
                 <Links />
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `
+                            (function() {
+                                try {
+                                    var saved = localStorage.getItem('theme');
+                                    if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                                        document.documentElement.classList.add('dark');
+                                    } else {
+                                        document.documentElement.classList.remove('dark');
+                                    }
+                                } catch (e) {}
+                            })();
+                        `
+                    }}
+                />
             </head>
             <body>
                 <div className="container mx-auto pl-2 pr-2 sm:pl-8 sm:pr-8">
@@ -147,9 +163,11 @@ export default function App() {
         const root = document.documentElement;
         if (root.classList.contains("dark")) {
             root.classList.remove("dark");
+            localStorage.setItem("theme", "light");
             setIsDark(false);
         } else {
             root.classList.add("dark");
+            localStorage.setItem("theme", "dark");
             setIsDark(true);
         }
     };
