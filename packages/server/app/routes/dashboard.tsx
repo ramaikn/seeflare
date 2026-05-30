@@ -48,6 +48,7 @@ import SearchFilterBadges from "~/components/SearchFilterBadges";
 import { TimeSeriesCard } from "./resources.timeseries";
 import { StatsCard } from "./resources.stats";
 import { requireAuth } from "~/lib/auth";
+import { buildCacheKey, getCachedOrFetch } from "~/analytics/cache-layer";
 
 export const meta: MetaFunction = () => {
     return [
@@ -104,7 +105,8 @@ export const loader = async ({ context, request }: LoaderFunctionArgs) => {
     // sites by hits: This is to populate the "sites" dropdown. We query the full retention
     //                period (all) so that any site that has been active
     //                will show up in the dropdown.
-    const sitesByHits = unifiedQuery.getSitesOrderedByHits("all");
+    const cacheKey = buildCacheKey("sites-list", { interval: "all" });
+    const sitesByHits = getCachedOrFetch<[string, number][]>(cacheKey, () => unifiedQuery.getSitesOrderedByHits("all")).then(res => res.data);
 
     const intervalType = getIntervalType(interval);
 

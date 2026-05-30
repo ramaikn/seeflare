@@ -14,7 +14,6 @@ import { getLoadContext } from "../app/load-context";
 import * as build from "../build/server";
 import { extractAsArrow } from "./lib/arrow";
 import { runDailyAggregation } from "../app/analytics/d1-aggregation";
-import { purgeAllSitesCache } from "../app/analytics/cache-layer";
 import { AnalyticsEngineAPI } from "../app/analytics/query";
 
 const requestHandler = createRequestHandler(build as unknown as ServerBuild);
@@ -61,16 +60,6 @@ export default {
                                 compactionDays
                             );
 
-                            // Get all sites to purge cache
-                            const db: any = (env as any).ANALYTICS_DB;
-                            const sitesResult = await db.prepare(
-                                "SELECT DISTINCT site_id FROM daily_aggregates"
-                            ).all();
-                            
-                            const siteIds = (sitesResult.results || []).map((r: any) => r.site_id);
-                            if (siteIds.length > 0) {
-                                await purgeAllSitesCache(siteIds);
-                            }
                         } catch (aggError) {
                             console.error("Aggregation error:", aggError);
                         }

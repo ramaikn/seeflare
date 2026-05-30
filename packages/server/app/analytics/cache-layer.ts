@@ -12,13 +12,14 @@ const CACHE_NAMESPACE = "https://seeflare-cache.internal";
 const DEFAULT_TTL_SECONDS = 86400; // 24 hours
 
 /**
- * Generate a cache version string that automatically increments at 01:05 UTC.
- * Since the cron job runs at 01:00 UTC, this ensures all cache keys become stale
+ * Generate a cache version string that automatically increments at 02:05 UTC.
+ * Since the cron job runs at 02:00 UTC, this ensures all cache keys become stale
  * immediately after daily aggregation finishes.
  */
 function getCacheVersion(): string {
-    // 01:05 UTC = 3900000 ms after midnight.
-    return Math.floor((Date.now() - 3900000) / 86400000).toString();
+    // 02:05 UTC = 7500000 ms after midnight.
+    // Must be AFTER the cron job (02:00 UTC) finishes writing new D1 data.
+    return Math.floor((Date.now() - 7500000) / 86400000).toString();
 }
 
 /**

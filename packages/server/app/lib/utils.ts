@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
-
+import { SearchFilters } from "~/lib/types";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -20,19 +20,7 @@ export function paramsFromUrl(url: string) {
     return params;
 }
 
-interface SearchFilters {
-    path?: string;
-    referrer?: string;
-    deviceType?: string;
-    country?: string;
-    browserName?: string;
-    browserVersion?: string;
-    utmSource?: string;
-    utmMedium?: string;
-    utmCampaign?: string;
-    utmTerm?: string;
-    utmContent?: string;
-}
+
 
 export function getFiltersFromSearchParams(searchParams: URLSearchParams) {
     const filters: SearchFilters = {};
@@ -70,6 +58,9 @@ export function getFiltersFromSearchParams(searchParams: URLSearchParams) {
     if (searchParams.has("utmContent")) {
         filters.utmContent = searchParams.get("utmContent") || "";
     }
+    if (searchParams.has("deviceModel")) {
+        filters.deviceModel = searchParams.get("deviceModel") || "";
+    }
 
     return filters;
 }
@@ -105,17 +96,6 @@ export function getIntervalType(interval: string): IntervalType {
         default:
             return "DAY";
     }
-}
-
-/**
- * Returns true if the given interval exceeds WAE's 90-day retention
- * and requires D1 historical data.
- */
-export function isExtendedInterval(interval: string): boolean {
-    if (interval === "all") return true;
-    const match = interval.match(/^(\d+)d$/);
-    if (!match) return false;
-    return parseInt(match[1], 10) > 90;
 }
 
 export function getDateTimeRange(interval: string, tz: string) {

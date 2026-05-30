@@ -498,7 +498,6 @@ export class AnalyticsEngineAPI {
             WHERE timestamp >= toDateTime('${localStartTime.format("YYYY-MM-DD HH:mm:ss")}')
                 AND timestamp < toDateTime('${localEndTime.format("YYYY-MM-DD HH:mm:ss")}')
                 AND ${ColumnMappings.siteId} = '${siteId}'
-                AND ${_column} != ''
             GROUP BY key, isVisitor, isBounce
             LIMIT 10000
         `;

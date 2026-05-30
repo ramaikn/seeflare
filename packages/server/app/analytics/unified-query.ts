@@ -54,14 +54,13 @@ export function computeDateRangeSplit(
 } {
     // Use UTC to ensure absolute alignment with D1 daily aggregates!
     const nowUtc = dayjs().utc();
-    const nowLocal = dayjs().tz(tz);
 
     // WAE covers the recent 90 days. We query from the start of the 89th day ago in UTC.
     const waeStartUtc = nowUtc.subtract(WAE_RETENTION_DAYS - 1, "day").startOf("day");
     
     // We pass absolute date strings to WAE instead of rolling intervals.
     // The start boundary perfectly aligns with D1's end boundary (UTC midnight).
-    const waeInterval = `range:${waeStartUtc.toISOString()}|${nowLocal.toISOString()}`;
+    const waeInterval = `range:${waeStartUtc.toISOString()}|${nowUtc.toISOString()}`;
 
     let totalDays: number;
     let requestedStart: dayjs.Dayjs;

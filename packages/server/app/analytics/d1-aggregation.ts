@@ -610,13 +610,14 @@ export async function runDailyAggregation(
             nextDate.isSame(yesterday, "day")
         ) {
             totalAggregated += await aggregateDay(db, api, nextDate);
+            // Update after EACH successful day so that if a later day fails,
+            // we don't re-aggregate already-completed days on the next cron run
+            await setLastAggregatedDate(
+                db,
+                nextDate.format("YYYY-MM-DD"),
+            );
             nextDate = nextDate.add(1, "day");
         }
-
-        await setLastAggregatedDate(
-            db,
-            yesterday.format("YYYY-MM-DD"),
-        );
     }
 
     // 3. Run compaction
