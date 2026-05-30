@@ -14,37 +14,50 @@ export async function extractAsArrow(
     const startDateTime = yesterday.startOf("day").toDate();
     const endDateTime = yesterday.endOf("day").toDate();
 
-    // Get all columns we want to extract
+    // Dimension columns to extract. Excludes high-cardinality fields that would
+    // cause cross-product explosion in a single GROUP BY query.
+    // Mirrors the filter used in d1-aggregation.ts aggregateDay().
     const columns = Object.keys(ColumnMappings).filter(
-        (key) => key !== "siteId" && key !== "newVisitor" && key !== "bounce",
+        (key) =>
+            key !== "siteId" &&
+            key !== "newVisitor" &&
+            key !== "bounce" &&
+            key !== "newSession" &&
+            key !== "host" &&
+            key !== "userAgent",
     ) as (keyof typeof ColumnMappings)[];
 
-    // Fetch data for yesterday
-    const data = await api.getAllCountsByAllColumnsForAllSites(
-        columns,
-        startDateTime,
-        endDateTime,
-    );
+    // Use range interval to discover active sites for yesterday
+    const rangeInterval = `range:${startDateTime.toISOString()}|${endDateTime.toISOString()}`;
+    const sites = await api.getSitesOrderedByHits(rangeInterval, 100);
+    const siteIds = sites.map((s) => s[0]);
 
-    // Convert Map to array of records for Arrow table creation
+    // Query each dimension column per site SEPARATELY to avoid the WAE row-limit
+    // cross-product truncation that occurs when grouping all columns simultaneously.
     const records: any[] = [];
-    data.forEach((counts, key) => {
-        const [date, siteId, ...columnValues] = key;
-        const record: any = {
-            date,
-            siteId,
-            views: counts.views,
-            visitors: counts.visitors,
-            bounces: counts.bounces,
-        };
+    const dateStr = yesterday.format("YYYY-MM-DD");
 
-        // Add column values
-        columns.forEach((column, index) => {
-            record[column] = columnValues[index];
-        });
-
-        records.push(record);
-    });
+    for (const siteId of siteIds) {
+        for (const col of columns) {
+            const countsMap = await api.getAggregationCountsForColumn(
+                siteId,
+                col,
+                startDateTime,
+                endDateTime,
+            );
+            for (const [val, counts] of Object.entries(countsMap)) {
+                records.push({
+                    date: dateStr,
+                    siteId,
+                    dimensionType: col,
+                    dimensionValue: val,
+                    views: counts.views,
+                    visitors: counts.visitors,
+                    bounces: counts.bounces,
+                });
+            }
+        }
+    }
 
     // Create Arrow table from JSON records
     const table = tableFromJSON(records);

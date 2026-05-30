@@ -52,7 +52,7 @@ flowchart TD
 **Lokasi Kode:** `packages/tracker/src/`
 
 Tracker adalah *script* kecil yang dipasang di sisi klien (browser pengunjung).
-- **Pembahasan Teknis:** Tracker membaca `window.location` dan melakukan *parsing* elemen-elemen seperti *hostname*, *path*, parameter UTM, dan *referrer* otomatis (baik dari `document.referrer` maupun parameter URL).
+- **Pembahasan Teknis:** Tracker membaca `window.location` dan melakukan *parsing* elemen-elemen seperti *hostname*, *path*, parameter UTM, dan *referrer* otomatis (baik dari `document.referrer` maupun parameter URL). Tracker juga mendukung aplikasi *Single Page Application* (SPA) dengan memantau fungsi `pushState` dan `replaceState` agar transisi halaman tetap terekam.
 - **Pelacakan Tanpa Cookie (Cookieless):** Tracker tidak menggunakan `document.cookie` atau `localStorage` untuk melacak pengunjung unik (sehingga bebas dari regulasi *Cookie Banner*). Sebaliknya, sistem menggunakan fungsi `checkCacheStatus()` melalui **proses dua fase permintaan (two-phase request)**:
 
   **Fase 1 — Pengecekan Hit Count:** Tracker membuat permintaan XHR `GET` aktif ke endpoint `/cache` di server, dengan mengirimkan `sid` (Site ID). Endpoint ini mengevaluasi header `If-Modified-Since` yang dikirim oleh cache native browser dan mengembalikan **respons JSON `{ ht: number }`** yang menunjukkan jumlah hit untuk pengunjung saat ini. Server juga menyetel header `Last-Modified` pada respons agar browser mengirimkan `If-Modified-Since` pada permintaan berikutnya. Tracker membaca nilai `ht` dari body JSON tersebut.
@@ -60,6 +60,7 @@ Tracker adalah *script* kecil yang dipasang di sisi klien (browser pengunjung).
   - Jika `ht = 1`, ini adalah kunjungan pertama hari ini (pengunjung unik baru).
   - Jika `ht = 2`, ini adalah kunjungan ulang (memicu koreksi anti-bounce).
   - Jika `ht = 3` atau lebih, ini adalah page view biasa (dibatasi maksimal 3 untuk menghindari paparan jumlah hit yang tepat secara publik).
+  - **Sistem Fallback:** Jika pengecekan cache ini gagal, tracker tidak lagi mengasumsikannya sebagai pengunjung baru, melainkan mendelegasikan pengecekan ke sisi server untuk mencegah inflasi data unik.
 
   **Fase 2 — Kirim Analitik:** Setelah mendapatkan hit count, tracker mengirimkan permintaan kedua `GET /collect?sid=...&ht=...&p=...` berisi seluruh payload analitik (path, referrer, parameter UTM, hit type) melalui `XMLHttpRequest` (XHR).
 
@@ -94,10 +95,11 @@ WAE adalah penyimpanan data analitik *time-series* dari Cloudflare.
 Untuk memecahkan masalah batasan 90 hari milik WAE, Seeflare menggunakan *Cron Job* harian dan database relasional **D1 (SQLite)**.
 - **Pembahasan Teknis:**
   Fungsi `runDailyAggregation` dipicu setiap pukul 02:00 UTC. Proses ini akan:
-  1. Melakukan *query* ke WAE untuk membaca seluruh total pengunjung, *views*, dan *bounce* untuk setiap hari yang belum diagregasi sejak agregasi terakhir yang berhasil, hingga tingkat per-dimensi (Path, Referrer, Country, Browser, Device, UTM). Jika cron job terlewat di hari manapun (misalnya karena deployment), jalankan berikutnya akan otomatis mengagregasi semua hari yang terlewat antara tanggal agregasi terakhir dan kemarin, diproses secara berurutan.
-  2. Memasukkan (*Insert*) hasil perhitungan ringkas (Agregat) ini ke dalam tabel SQLite `daily_aggregates` menggunakan mode *Batch* `db.batch()` (maksimal 50 pernyataan sekali jalan untuk menjaga limit CPU Worker).
-  3. **Kompaksi Otomatis (Compaction):** Fungsi `compactOldData()` akan berjalan setelah agregasi selesai. Jika ada deretan data yang usianya melebihi `DEFAULT_COMPACTION_DAYS` (standarnya 365 hari / 1 tahun), maka data harian dari bulan tersebut akan ditotal (*SUM*) lalu dirapatkan menjadi 1 baris bulanan (`granularity = 'month'`). Hal ini memastikan ukuran D1 tidak akan pernah membesar tak terkendali meskipun menyimpan data seumur hidup.
-  4. **Backfill Pertama Kali dari R2:** Pada jalannya yang pertama (ketika belum ada metadata agregasi sebelumnya), sistem juga akan mencoba melakukan backfill data historis dari file backup Arrow di R2 sebelum mengagregasi data WAE. Hal ini memastikan data historis tidak hilang bahkan pada deployment baru.
+  1. **R2 Backup & Cleanup:** Pertama-tama secara sekuensial mencadangkan data mentah terbaru ke dalam file Arrow di Cloudflare R2 dan membersihkan file *backup* lama (usia >95 hari) agar biaya penyimpanan tidak membengkak.
+  2. **Agregasi WAE:** Melakukan *query* ke WAE untuk membaca seluruh total pengunjung, *views*, dan *bounce* untuk setiap hari yang belum diagregasi sejak agregasi terakhir yang berhasil. Untuk mencegah kehilangan data akibat keterlambatan masuknya log (*late-ingestion*) pada WAE, cron ini juga selalu melakukan re-agregasi (menggunakan metode *UPSERT*) untuk **2 hari terakhir** secara otomatis.
+  3. Memasukkan (*Insert* / *Update*) hasil perhitungan ringkas (Agregat) ini ke dalam tabel SQLite `daily_aggregates` menggunakan mode *Batch* `db.batch()` (maksimal 50 pernyataan sekali jalan untuk menjaga limit CPU Worker).
+  4. **Kompaksi Otomatis (Compaction):** Fungsi `compactOldData()` akan berjalan setelah agregasi selesai. Jika ada deretan data yang usianya melebihi `DEFAULT_COMPACTION_DAYS` (standarnya 365 hari / 1 tahun), maka data harian dari bulan tersebut akan ditotal (*SUM*) lalu dirapatkan menjadi 1 baris bulanan (`granularity = 'month'`). Proses ini kini berjalan secara transaksional (atomik) untuk menjamin tidak ada data yang terhitung ganda walau sistem terhenti di tengah jalan, memastikan ukuran D1 tidak membesar tak terkendali.
+  5. **Backfill Pertama Kali dari R2:** Pada jalannya yang pertama (ketika belum ada metadata agregasi sebelumnya), sistem juga akan mencoba melakukan backfill data historis per kolom dari file backup Arrow di R2 sebelum mengagregasi data WAE.
 
 ---
 
@@ -109,8 +111,8 @@ Sistem kecerdasan yang membuat transisi antar database tidak terlihat oleh pengg
   - Ia mengecek fungsi `isExtendedInterval(interval)`. Jika pengguna memilih rentang waktu **≤ 90 Hari** (misal 30 hari, atau tepat 90 hari), maka logika hanya akan meneruskan *query* 100% murni ke WAE.
   - Jika pengguna memilih **> 90 Hari** atau "All Time":
     1. Fungsi `computeDateRangeSplit()` akan memotong rentang waktu menjadi dua zona akurat berdasarkan UTC. (Zona WAE = 90 hari terakhir. Zona D1 = Sisa hari dari sejak website dipasang sampai **H-90**, yaitu hari sebelum titik awal lookback 89 hari WAE).
-    2. Sistem akan melempar *query* secara paralel (bersamaan) menggunakan `Promise.all()` ke fungsi pencari D1 dan fungsi pencari WAE.
-    3. Setelah kedua *array* dikembalikan, fungsi `mergeTimeSeries()`, `mergeThreeColumnCounts()`, atau `mergeVisitorCounts()` akan menggabungkan struktur data SQLite dan WAE tersebut, menyatukan nilai *visitors*, *views*, dan *bounces*, lalu mengurutkannya (*Sort*). Untuk interval yang panjang, data time series juga dapat dibucket ke dalam agregasi mingguan (`WEEK`) atau bulanan (`MONTH`) sebelum ditampilkan.
+    2. Sistem akan melempar *query* secara paralel (bersamaan) menggunakan `Promise.all()` ke fungsi pencari D1 dan fungsi pencari WAE. Query D1 akan secara cerdas memfilter data ringkasan bulanan di perbatasan tanggal awal agar tidak terjadi *over-counting*.
+    3. Setelah kedua *array* dikembalikan, fungsi gabungan akan menyatukan struktur data SQLite dan WAE tersebut. Nilai negatif pada *bounces* akan dikoreksi otomatis sebelum diurutkan (*Sort*). Untuk interval yang panjang, data time series juga dapat dibucket ke dalam agregasi mingguan (`WEEK`) atau bulanan (`MONTH`) sebelum ditampilkan.
 
 Hasil akhirnya, *UI Chart* menampilkan satu grafik bersambung mulus bertahun-tahun.
 

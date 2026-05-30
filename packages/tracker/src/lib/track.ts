@@ -100,10 +100,13 @@ export async function trackPageview(
             client.reporterUrl,
             client.siteId,
         );
-        hitType = cacheStatus.ht.toString();
+        // Only pass hitType if ht is a truthy value (1 or 2).
+        // ht: 0 means the fallback fired (timeout/error) — treat as unknown,
+        // letting the collect endpoint use CF-Cache-Status headers instead.
+        hitType = cacheStatus.ht ? cacheStatus.ht.toString() : undefined;
     } catch {
-        // If cache check fails, we proceed without hit count data
-        // The collect endpoint will handle the missing parameters
+        // If cache check throws, proceed without hit count data.
+        // The collect endpoint will use its own CF-Cache-Status header as fallback.
     }
 
     const requestParams = buildCollectRequestParams(

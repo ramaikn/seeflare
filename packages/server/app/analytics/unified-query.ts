@@ -125,6 +125,31 @@ function mergeTimeSeries(
 }
 
 /**
+ * Fix negative bounce values in a sorted time series.
+ * Replicates the correction logic from query.ts getViewsGroupedByInterval (lines 330-343).
+ *
+ * When a visitor bounces at 23:55 on Day 1 and clicks again at 00:05 on Day 2,
+ * Day 1 gets +1 bounce and Day 2 gets -1 bounce. This function redistributes
+ * the negative value backward to the nearest positive bucket.
+ */
+function fixNegativeBounces(sorted: ViewsGroupedByInterval): ViewsGroupedByInterval {
+    for (let i = 1; i < sorted.length; i++) {
+        const current = sorted[i][1];
+        if (current.bounces < 0) {
+            for (let j = i - 1; j >= 0; j--) {
+                const prev = sorted[j][1];
+                if (prev.bounces > 0) {
+                    prev.bounces += current.bounces;
+                    current.bounces = 0;
+                    break;
+                }
+            }
+        }
+    }
+    return sorted;
+}
+
+/**
  * Merge D1 visitor-count tuples with WAE visitor-count tuples.
  * Combines counts for the same dimension values.
  */
@@ -317,6 +342,8 @@ export class UnifiedAnalyticsQuery {
         );
 
         const merged = mergeTimeSeries(d1Data, waeData);
+        // Fix negative bounces in merged D1+WAE data (mirrors WAE-only correction in query.ts)
+        fixNegativeBounces(merged);
 
         if (intervalType === "MONTH") {
             const monthly = new Map<string, { views: number; visitors: number; bounces: number }>();
@@ -330,7 +357,7 @@ export class UnifiedAnalyticsQuery {
                 accum.visitors += counts.visitors;
                 accum.bounces += counts.bounces;
             }
-            return Array.from(monthly.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+            return fixNegativeBounces(Array.from(monthly.entries()).sort((a, b) => a[0].localeCompare(b[0])));
         }
 
         if (intervalType === "WEEK") {
@@ -345,7 +372,7 @@ export class UnifiedAnalyticsQuery {
                 accum.visitors += counts.visitors;
                 accum.bounces += counts.bounces;
             }
-            return Array.from(weekly.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+            return fixNegativeBounces(Array.from(weekly.entries()).sort((a, b) => a[0].localeCompare(b[0])));
         }
 
         return merged;

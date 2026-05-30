@@ -1,3 +1,24 @@
+# Seeflare (Fork of Counterscale)
+
+> [!WARNING]
+> **Experimental AI Agent Fork**
+> This repository is a fork of Counterscale and is actively developed using an AI Agent. It is highly experimental and prone to bugs. Use at your own risk!
+
+Seeflare is a modified version of Counterscale. While the original Counterscale was built with a simple philosophy using only Cloudflare Workers Analytics Engine (WAE) (which has a 90-day data retention limit), Seeflare introduces a new architecture to keep historical data forever without bloated costs. 
+
+**Key Changes in Seeflare:**
+- Transitioned from a simple WAE-only approach to a **WAE + D1 (SQLite) + R2** architecture.
+- Uses WAE for fast real-time data ingestion.
+- Uses a daily Cron Job to aggregate and store historical data in D1, allowing infinite data retention.
+- Uses R2 for raw data backups.
+- Implements a unified query engine that seamlessly merges recent WAE data with historical D1 data on the dashboard.
+
+For a detailed explanation of the new system, please read the full documentation here: **[Seeflare Architecture & How It Works](./how/en-how-it-work.md)**.
+
+---
+
+*(Original Counterscale README below)*
+
 # Counterscale
 
 ![](/packages/server/public/counterscale-logo-300x300.webp)

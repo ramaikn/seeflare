@@ -67,7 +67,7 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
             filters: filtersHash,
         });
 
-        const cacheResult = await getCachedOrFetch(cacheKey, fetchData, 0);
+        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
         return cacheResult.data;
     } else {
         return await fetchData();

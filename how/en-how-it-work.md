@@ -52,7 +52,7 @@ flowchart TD
 **Code Location:** `packages/tracker/src/`
 
 The tracker is a small *script* installed on the client side (visitor's browser).
-- **Technical Discussion:** The tracker reads `window.location` and automatically parses elements like *hostname*, *path*, UTM parameters, and *referrer* (both from `document.referrer` and URL parameters).
+- **Technical Discussion:** The tracker reads `window.location` and automatically parses elements like *hostname*, *path*, UTM parameters, and *referrer* (both from `document.referrer` and URL parameters). The tracker also supports *Single Page Applications* (SPA) by monitoring the `pushState` and `replaceState` functions so that page transitions remain recorded.
 - **Cookieless Tracking:** The tracker does not use `document.cookie` or `localStorage` to track unique visitors (thus being free from *Cookie Banner* regulations). Instead, the system uses the `checkCacheStatus()` function via a **two-phase request process**:
 
   **Phase 1 — Hit Count Check:** The tracker makes an active XHR `GET` request to the `/cache` endpoint on the server, passing the `sid` (Site ID). This endpoint evaluates the `If-Modified-Since` header sent by the browser's native cache and returns a **JSON response `{ ht: number }`** indicating the hit count for the current visitor. It also sets a `Last-Modified` header on the response so the browser will send `If-Modified-Since` on subsequent requests. The tracker reads the `ht` value from the JSON body.
@@ -60,6 +60,7 @@ The tracker is a small *script* installed on the client side (visitor's browser)
   - If `ht = 1`, it is the first visit today (new unique visitor).
   - If `ht = 2`, it is a return visit (triggers anti-bounce correction).
   - If `ht = 3` or more, it is a regular page view (capped at 3 to avoid exposing exact counts publicly).
+  - **Fallback System:** If this cache check fails, the tracker no longer assumes it is a new visitor, but delegates the checking to the server-side to prevent inflation of unique data.
 
   **Phase 2 — Send Analytics:** After obtaining the hit count, the tracker sends a second `GET /collect?sid=...&ht=...&p=...` request containing the full analytics payload (path, referrer, UTM parameters, hit type) via `XMLHttpRequest` (XHR).
 
@@ -94,10 +95,11 @@ WAE is a *time-series* analytics data storage from Cloudflare.
 To solve WAE's 90-day limit problem, Seeflare uses a daily *Cron Job* and a relational database **D1 (SQLite)**.
 - **Technical Discussion:**
   The `runDailyAggregation` function is triggered every day at 02:00 UTC. This process will:
-  1. *Query* WAE to read all total visitors, *views*, and *bounces* for each missing day since the last successful aggregation, down to the per-dimension level (Path, Referrer, Country, Browser, Device, UTM). If the cron job was missed on any day (e.g., due to deployment), the next run will automatically aggregate all missing days between the last successful aggregation date and yesterday, processing them sequentially.
-  2. Insert these concise calculation results (Aggregates) into the SQLite table `daily_aggregates` using *Batch* mode `db.batch()` (maximum 50 statements in one go to maintain Worker CPU limits).
-  3. **Automatic Compaction:** The `compactOldData()` function will run after the aggregation is complete. If there is a series of data whose age exceeds `DEFAULT_COMPACTION_DAYS` (default 365 days / 1 year), then the daily data from that month will be totaled (*SUM*) and then compacted into 1 monthly row (`granularity = 'month'`). This ensures the size of D1 will never grow uncontrollably even if it stores data for a lifetime.
-  4. **First-Run Backfill from R2:** On first run (when no prior aggregation metadata exists), the system will also attempt to backfill historical data from R2 Arrow backup files before aggregating WAE data. This ensures historical data is not lost even on a fresh deployment.
+  1. **R2 Backup & Cleanup:** First sequentially back up the latest raw data into Arrow files on Cloudflare R2 and clean up old *backup* files (age >95 days) so that storage costs do not bloat.
+  2. **WAE Aggregation:** *Query* WAE to read all total visitors, *views*, and *bounces* for each missing day since the last successful aggregation. To prevent data loss due to *late-ingestion* logs on WAE, this cron also automatically re-aggregates (using the *UPSERT* method) the **last 2 days**.
+  3. Insert / Update these concise calculation results (Aggregates) into the SQLite table `daily_aggregates` using *Batch* mode `db.batch()` (maximum 50 statements in one go to maintain Worker CPU limits).
+  4. **Automatic Compaction:** The `compactOldData()` function will run after the aggregation is complete. If there is a series of data whose age exceeds `DEFAULT_COMPACTION_DAYS` (default 365 days / 1 year), then the daily data from that month will be totaled (*SUM*) and then compacted into 1 monthly row (`granularity = 'month'`). This process now runs transactionally (atomically) to ensure no data is double-counted even if the system crashes midway. This ensures the size of D1 will never grow uncontrollably.
+  5. **First-Run Backfill from R2:** On first run (when no prior aggregation metadata exists), the system will also attempt to backfill historical data per column from R2 Arrow backup files before aggregating WAE data.
 
 ---
 
@@ -109,8 +111,8 @@ The intelligence system that makes transitions between databases invisible to us
   - It checks the `isExtendedInterval(interval)` function. If the user selects a time range **≤ 90 Days** (e.g., 30 days, or exactly 90 days), then the logic will only forward a 100% pure *query* to WAE.
   - If the user selects **> 90 Days** or "All Time":
     1. The `computeDateRangeSplit()` function will split the time range into two accurate zones based on UTC. (WAE Zone = last 90 days. D1 Zone = The remaining days from since the website was installed to **D-90**, which is the day before WAE's 89-day lookback start).
-    2. The system will throw *queries* in parallel (simultaneously) using `Promise.all()` to the D1 search function and the WAE search function.
-    3. After both *arrays* are returned, the `mergeTimeSeries()`, `mergeThreeColumnCounts()`, or `mergeVisitorCounts()` function will combine the SQLite and WAE data structures, unify the *visitors*, *views*, and *bounces* values, and then sort them (*Sort*). For extended intervals, time series data may also be bucketed into weekly (`WEEK`) or monthly (`MONTH`) aggregation buckets before display.
+    2. The system will throw *queries* in parallel (simultaneously) using `Promise.all()` to the D1 search function and the WAE search function. D1 queries intelligently filter out monthly summary data at the start date boundaries to avoid *over-counting*.
+    3. After both *arrays* are returned, the merge function will combine the SQLite and WAE data structures. Negative bounce values are automatically corrected before sorting. For extended intervals, time series data may also be bucketed into weekly (`WEEK`) or monthly (`MONTH`) aggregation buckets before display.
 
 As a final result, the *UI Chart* displays a single, smoothly connected graph spanning years.
 

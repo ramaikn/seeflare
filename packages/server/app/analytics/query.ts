@@ -165,7 +165,10 @@ function filtersToSql(filters: SearchFilters) {
     let filterStr = "";
     supportedFilters.forEach((filter) => {
         if (Object.hasOwnProperty.call(filters, filter)) {
-            filterStr += `AND ${ColumnMappings[filter]} = '${filters[filter]}'`;
+            // Escape single quotes to prevent SQL injection via CF Analytics Engine API.
+            // Parameterized queries are not supported by WAE; escaping is the only defense.
+            const sanitized = String(filters[filter]).replace(/'/g, "\\'");
+            filterStr += `AND ${ColumnMappings[filter]} = '${sanitized}'`;
         }
     });
     return filterStr;
@@ -545,7 +548,9 @@ export class AnalyticsEngineAPI {
 
         // first query by visitor count – this is to figure out the top N results
         // by visitor count first
-        // NOTE: there's an await here; need to fix this or harms parallelism
+        // NOTE: Sequential await is architecturally required here.
+        // The second query must filter by the top-N dimension values returned by this first query.
+        // Parallelization is not possible because Query 2 depends on Query 1's results.
         const visitorCountByColumn = await this.getVisitorCountByColumn(
             siteId,
             column,

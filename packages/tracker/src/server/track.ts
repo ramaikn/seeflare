@@ -81,8 +81,11 @@ export async function trackPageview(
     const optsUtmParams = getUtmParamsFromOpts(opts);
     const utmParams = mergeUtmParams(urlUtmParams, optsUtmParams);
 
-    // Server-side tracking defaults to hit type 1 (new visit)
-    // since we don't have browser session tracking
+    // ⚠️ SERVER-SIDE LIMITATION: Always sends ht=1 (new visitor) because
+    // there is no browser session or cookie mechanism available server-side.
+    // This means server-side tracked pages will always report 100% bounce rate
+    // and inflate unique visitor counts. This is a known, unavoidable trade-off
+    // of server-side tracking without a session store (e.g., KV or Redis).
     const requestParams = buildCollectRequestParams(
         client.siteId,
         hostname,

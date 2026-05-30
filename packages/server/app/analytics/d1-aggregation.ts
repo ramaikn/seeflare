@@ -480,27 +480,22 @@ export async function compactOldData(
             continue;
         }
 
-        // Insert monthly aggregates
-        await db
-            .prepare(
+        // Atomic INSERT + DELETE via db.batch() — prevents double-counting if worker
+        // crashes between operations. D1 batch executes all statements atomically.
+        await db.batch([
+            db.prepare(
                 `INSERT INTO daily_aggregates (date, granularity, site_id, dimension_type, dimension_value, views, visitors, bounces)
                  SELECT ?, 'month', site_id, dimension_type, dimension_value,
                         SUM(views), SUM(visitors), SUM(bounces)
                  FROM daily_aggregates
                  WHERE substr(date, 1, 7) = ? AND granularity = 'day'
                  GROUP BY site_id, dimension_type, dimension_value`,
-            )
-            .bind(month, month)
-            .run();
-
-        // Delete compacted daily rows
-        await db
-            .prepare(
+            ).bind(month, month),
+            db.prepare(
                 `DELETE FROM daily_aggregates
                  WHERE substr(date, 1, 7) = ? AND granularity = 'day'`,
-            )
-            .bind(month)
-            .run();
+            ).bind(month),
+        ]);
 
         compactedMonths++;
         console.log(`Compacted month ${month} into monthly aggregate`);
@@ -617,6 +612,23 @@ export async function runDailyAggregation(
                 nextDate.format("YYYY-MM-DD"),
             );
             nextDate = nextDate.add(1, "day");
+        }
+    }
+
+    // Re-aggregate the 2 most recent days on every run to capture late-arriving WAE data.
+    // WAE has eventual consistency — events from Day N may arrive hours after 02:00 UTC.
+    // aggregateDay() uses ON CONFLICT DO UPDATE (UPSERT), so this is safe to run repeatedly.
+    const dayBeforeYesterday = yesterday.subtract(1, "day");
+    for (const recentDay of [dayBeforeYesterday, yesterday]) {
+        try {
+            await aggregateDay(db, api, recentDay);
+        } catch (recentErr) {
+            // Non-fatal: log and continue. lastAggregatedDate is not updated here
+            // because re-aggregation does not extend the catch-up window.
+            console.error(
+                `Re-aggregation failed for ${recentDay.format("YYYY-MM-DD")}:`,
+                recentErr,
+            );
         }
     }
 

@@ -49,9 +49,9 @@ export async function getD1Counts(
                    COALESCE(SUM(bounces), 0) as bounces
             FROM daily_aggregates
             WHERE site_id = ? AND dimension_type = ? AND dimension_value = ?
-              AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+              AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
         `;
-        bindings = [siteId, dimensionType, dimensionValue, startDate, startDate, endDate];
+        bindings = [siteId, dimensionType, dimensionValue, startDate, startDate, startDate, endDate];
     } else {
         query = `
             SELECT COALESCE(SUM(views), 0) as views,
@@ -59,9 +59,9 @@ export async function getD1Counts(
                    COALESCE(SUM(bounces), 0) as bounces
             FROM daily_aggregates
             WHERE site_id = ? AND dimension_type = ?
-              AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+              AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
         `;
-        bindings = [siteId, dimensionType, startDate, startDate, endDate];
+        bindings = [siteId, dimensionType, startDate, startDate, startDate, endDate];
     }
 
     const result = await db
@@ -117,10 +117,10 @@ export async function getD1ViewsGroupedByInterval(
                         COALESCE(SUM(bounces), 0) as bounces
                  FROM daily_aggregates
                  WHERE site_id = ? AND dimension_type = ? AND dimension_value = ?
-                   AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+                   AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
                  GROUP BY date, granularity
                  ORDER BY date ASC`;
-        bindings = [siteId, dimensionType, dimensionValue, startDate, startDate, endDate];
+        bindings = [siteId, dimensionType, dimensionValue, startDate, startDate, startDate, endDate];
     } else {
         query = `SELECT date, granularity,
                         COALESCE(SUM(views), 0) as views,
@@ -128,10 +128,10 @@ export async function getD1ViewsGroupedByInterval(
                         COALESCE(SUM(bounces), 0) as bounces
                  FROM daily_aggregates
                  WHERE site_id = ? AND dimension_type = 'overall'
-                   AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+                   AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
                  GROUP BY date, granularity
                  ORDER BY date ASC`;
-        bindings = [siteId, startDate, startDate, endDate];
+        bindings = [siteId, startDate, startDate, startDate, endDate];
     }
 
     const result = await db
@@ -184,12 +184,12 @@ export async function getD1VisitorCountByColumn(
             `SELECT dimension_value, COALESCE(SUM(visitors), 0) as visitors
              FROM daily_aggregates
              WHERE site_id = ? AND dimension_type = ?
-               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
              GROUP BY dimension_value
              ORDER BY visitors DESC
              LIMIT ? OFFSET ?`,
         )
-        .bind(siteId, dimensionType, startDate, startDate, endDate, limit, offset)
+        .bind(siteId, dimensionType, startDate, startDate, startDate, endDate, limit, offset)
         .all<{ dimension_value: string; visitors: number }>();
 
     return (result.results || []).map((row) => [
@@ -222,12 +222,12 @@ export async function getD1AllCountsByColumn(
                     COALESCE(SUM(bounces), 0) as bounces
              FROM daily_aggregates
              WHERE site_id = ? AND dimension_type = ?
-               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
              GROUP BY dimension_value
              ORDER BY visitors DESC
              LIMIT ? OFFSET ?`,
         )
-        .bind(siteId, dimensionType, startDate, startDate, endDate, limit, offset)
+        .bind(siteId, dimensionType, startDate, startDate, startDate, endDate, limit, offset)
         .all<{
             dimension_value: string;
             views: number;
@@ -314,12 +314,12 @@ export async function getD1SitesOrderedByHits(
             `SELECT site_id, COALESCE(SUM(views), 0) as total_views
              FROM daily_aggregates
              WHERE dimension_type = 'overall'
-               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7))) AND date <= ?
+               AND (date >= ? OR (granularity = 'month' AND date = substr(?, 1, 7) AND substr(?, 9, 2) = '01')) AND date <= ?
              GROUP BY site_id
              ORDER BY total_views DESC
              LIMIT ?`,
         )
-        .bind(startDate, startDate, endDate, limit)
+        .bind(startDate, startDate, startDate, endDate, limit)
         .all<{ site_id: string; total_views: number }>();
 
     return (result.results || []).map((row) => [

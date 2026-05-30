@@ -14,9 +14,11 @@ export function checkCacheStatus(
     siteId: string,
 ): Promise<CacheResponse> {
     return new Promise((resolve) => {
-        // Default fallback response for any error case
+        // Default fallback response for any error case (timeout, network error, ad blocker).
+        // Use ht: 0 (unknown) so the collect endpoint applies its own CF-Cache-Status
+        // header logic to determine visitor status — more accurate than always assuming new.
         const fallbackResponse: CacheResponse = {
-            ht: 1, // Assume first hit (new visit)
+            ht: 0, // Unknown — let server-side cache headers determine visitor status
         };
 
         // Replace the final /collect path segment with /cache and add site ID as a query parameter
