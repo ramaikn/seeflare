@@ -9,49 +9,72 @@ import { useFetcher } from "react-router";
 import { Card } from "~/components/ui/card";
 import { SearchFilters } from "~/lib/types";
 import { requireAuth } from "~/lib/auth";
+import { isExtendedInterval } from "~/analytics/unified-query";
+import { buildCacheKey, getCachedOrFetch, hashFilters } from "~/analytics/cache-layer";
 
 export async function loader({ context, request }: LoaderFunctionArgs) {
     await requireAuth(request, context.cloudflare.env);
-    const { analyticsEngine } = context;
+    const { unifiedQuery } = context;
     const { interval, site } = paramsFromUrl(request.url);
     const url = new URL(request.url);
     const tz = url.searchParams.get("timezone") || "UTC";
     const filters = getFiltersFromSearchParams(url.searchParams);
 
-    // intentionally parallelize queries by deferring await
-    const earliestEvents = analyticsEngine.getEarliestEvents(site);
-    const counts = await analyticsEngine.getCounts(site, interval, tz, filters);
+    const isExtended = isExtendedInterval(interval);
 
-    const { earliestEvent, earliestBounce } = await earliestEvents;
-    const { startDate } = getDateTimeRange(interval, tz);
+    const fetchData = async () => {
+        // intentionally parallelize queries by deferring await
+        const earliestEventsPromise = unifiedQuery.getEarliestEvents(site);
+        const countsPromise = unifiedQuery.getCounts(site, interval, tz, filters);
 
-    // FOR BACKWARDS COMPAT, ONLY SHOW BOUNCE RATE IF WE HAVE DATE FOR THE ENTIRE QUERY PERIOD
-    // -----------------------------------------------------------------------------
-    // Bounce rate is a later-introduced metric that may not have been recorded for
-    // the full duration of the queried Counterscale dataset (not possible to backfill
-    // data we dont have!)
+        const { earliestEvent, earliestBounce } = await earliestEventsPromise;
+        const counts = await countsPromise;
 
-    // So, cannot reliably show "bounce rate" if bounce data was unavailable for a portion
-    // of the query period.
+        const { startDate } = getDateTimeRange(interval, tz);
 
-    // To figure out if we can give an answer or not, we inspect the earliest bounce/earliest event
-    // data recorded, and determine if our dataset is "complete" for the given query interval.
+        // FOR BACKWARDS COMPAT, ONLY SHOW BOUNCE RATE IF WE HAVE DATE FOR THE ENTIRE QUERY PERIOD
+        // -----------------------------------------------------------------------------
+        // Bounce rate is a later-introduced metric that may not have been recorded for
+        // the full duration of the queried Counterscale dataset (not possible to backfill
+        // data we dont have!)
 
-    const hasSufficientBounceData =
-        earliestBounce !== null &&
-        earliestEvent !== null &&
-        (earliestEvent.getTime() == earliestBounce.getTime() || // earliest event recorded a bounce -- any query is fine
-            earliestBounce < startDate); // earliest bounce occurred before start of query period -- this query is fine
+        // So, cannot reliably show "bounce rate" if bounce data was unavailable for a portion
+        // of the query period.
 
-    const bounceRate =
-        counts.visitors > 0 ? counts.bounces / counts.visitors : undefined;
+        // To figure out if we can give an answer or not, we inspect the earliest bounce/earliest event
+        // data recorded, and determine if our dataset is "complete" for the given query interval.
 
-    return {
-        views: counts.views,
-        visitors: counts.visitors,
-        bounceRate: bounceRate,
-        hasSufficientBounceData,
+        const hasSufficientBounceData =
+            earliestBounce !== null &&
+            earliestEvent !== null &&
+            (earliestEvent.getTime() == earliestBounce.getTime() || // earliest event recorded a bounce -- any query is fine
+                earliestBounce < startDate); // earliest bounce occurred before start of query period -- this query is fine
+
+        const bounceRate =
+            counts.visitors > 0 ? counts.bounces / counts.visitors : undefined;
+
+        return {
+            views: counts.views,
+            visitors: counts.visitors,
+            bounceRate: bounceRate,
+            hasSufficientBounceData,
+        };
     };
+
+    if (isExtended) {
+        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+        const cacheKey = buildCacheKey("stats", {
+            site,
+            interval,
+            tz,
+            filters: filtersHash,
+        });
+
+        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+        return cacheResult.data;
+    } else {
+        return await fetchData();
+    }
 }
 
 export const StatsCard = ({

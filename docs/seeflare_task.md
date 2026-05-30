@@ -14,25 +14,25 @@
 ## Phase 4: Enhanced Cron Job
 - [x] 4.1 Update app.ts scheduled handler (aggregation + compaction + cache purge)
 ## Phase 5: Dashboard Route Updates
-- [ ] 5.1 Update resources.stats.tsx
-- [ ] 5.2 Update resources.timeseries.tsx
-- [ ] 5.3 Update resources.paths.tsx
-- [ ] 5.4 Update resources.referrer.tsx
-- [ ] 5.5 Update resources.country.tsx
-- [ ] 5.6 Update resources.browser.tsx
-- [ ] 5.7 Update resources.browserversion.tsx
-- [ ] 5.8 Update resources.device.tsx
-- [ ] 5.9 Update resources.utm-source.tsx
-- [ ] 5.10 Update resources.utm-medium.tsx
-- [ ] 5.11 Update resources.utm-campaign.tsx
-- [ ] 5.12 Update resources.utm-term.tsx
-- [ ] 5.13 Update resources.utm-content.tsx
-- [ ] 5.14 Update dashboard.tsx (MAX_RETENTION_DAYS, etc.)
+- [x] 5.1 Update resources.stats.tsx
+- [x] 5.2 Update resources.timeseries.tsx
+- [x] 5.3 Update resources.paths.tsx
+- [x] 5.4 Update resources.referrer.tsx
+- [x] 5.5 Update resources.country.tsx
+- [x] 5.6 Update resources.browser.tsx
+- [x] 5.7 Update resources.browserversion.tsx
+- [x] 5.8 Update resources.device.tsx
+- [x] 5.9 Update resources.utm-source.tsx
+- [x] 5.10 Update resources.utm-medium.tsx
+- [x] 5.11 Update resources.utm-campaign.tsx
+- [x] 5.12 Update resources.utm-term.tsx
+- [x] 5.13 Update resources.utm-content.tsx
+- [x] 5.14 Update dashboard.tsx (MAX_RETENTION_DAYS, etc.)
 ## Phase 6: API Routes
-- [ ] 6.1 Create API types (`lib/types/api.ts`)
-- [ ] 6.2 Create combined API route (`api.analytics.ts`)
-- [ ] 6.3 Create individual API routes (stats, timeseries, dimension)
+- [x] 6.1 Create API types (`lib/types/api.ts`)
+- [x] 6.2 Create combined API route (`api.analytics.ts`)
+- [x] 6.3 Create individual API routes (stats, timeseries, dimension)
 ## Phase 7: Verification
 - [x] 7.1 TypeScript type checking passes
 - [x] 7.2 Build succeeds
-- [ ] 7.3 Create walkthrough
+- [x] 7.3 Create walkthrough

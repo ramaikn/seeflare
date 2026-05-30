@@ -12,6 +12,16 @@ const CACHE_NAMESPACE = "https://seeflare-cache.internal";
 const DEFAULT_TTL_SECONDS = 86400; // 24 hours
 
 /**
+ * Generate a cache version string that automatically increments at 01:05 UTC.
+ * Since the cron job runs at 01:00 UTC, this ensures all cache keys become stale
+ * immediately after daily aggregation finishes.
+ */
+function getCacheVersion(): string {
+    // 01:05 UTC = 3900000 ms after midnight.
+    return Math.floor((Date.now() - 3900000) / 86400000).toString();
+}
+
+/**
  * Generate a deterministic cache key URL from route + params.
  */
 export function buildCacheKey(
@@ -28,6 +38,9 @@ export function buildCacheKey(
             url.searchParams.set(key, String(value));
         }
     }
+
+    // Add cache version to automatically invalidate all keys daily
+    url.searchParams.set("v", getCacheVersion());
 
     return url.toString();
 }
@@ -126,69 +139,23 @@ export async function deleteCache(cacheKey: string): Promise<boolean> {
 }
 
 /**
- * Purge all cached analytics data for the given site and intervals.
- * Called by the cron job after daily aggregation to invalidate stale data.
- *
- * Since Workers Cache API doesn't support wildcard deletion, we build
- * known cache keys for common intervals and delete them.
+ * Purging is now handled automatically via Cache Versioning in buildCacheKey.
+ * Kept for backwards compatibility with existing caller.
  */
 export async function purgeSiteCache(
     siteId: string,
-    routes: string[] = [
-        "stats",
-        "timeseries",
-        "paths",
-        "referrer",
-        "country",
-        "browser",
-        "browserversion",
-        "device",
-        "utm-source",
-        "utm-medium",
-        "utm-campaign",
-        "utm-term",
-        "utm-content",
-    ],
-    intervals: string[] = [
-        "120d",
-        "365d",
-        "1095d",
-        "1825d",
-        "all",
-    ],
+    routes: string[] = [],
+    intervals: string[] = [],
 ): Promise<number> {
-    let purged = 0;
-
-    for (const route of routes) {
-        for (const interval of intervals) {
-            // Purge with common page numbers (1-5)
-            for (let page = 1; page <= 5; page++) {
-                const cacheKey = buildCacheKey(route, {
-                    site: siteId,
-                    interval,
-                    page,
-                    filters: "none",
-                });
-
-                const deleted = await deleteCache(cacheKey);
-                if (deleted) purged++;
-            }
-        }
-    }
-
-    return purged;
+    return 0;
 }
 
 /**
- * Purge all cached data for all known sites after daily aggregation.
- * Accepts a list of site IDs to purge.
+ * Purging is now handled automatically via Cache Versioning in buildCacheKey.
+ * Kept for backwards compatibility with existing caller.
  */
 export async function purgeAllSitesCache(
     siteIds: string[],
 ): Promise<number> {
-    let totalPurged = 0;
-    for (const siteId of siteIds) {
-        totalPurged += await purgeSiteCache(siteId);
-    }
-    return totalPurged;
+    return 0;
 }

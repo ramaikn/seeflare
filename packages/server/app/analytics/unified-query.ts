@@ -52,34 +52,37 @@ export function computeDateRangeSplit(
     waeInterval: string;
     totalDays: number;
 } {
-    const now = dayjs().tz(tz);
-    // WAE covers the recent 90 days. We query from the start of the 89th day ago,
-    // ensuring WAE has the complete day available.
-    const waeStart = now.subtract(WAE_RETENTION_DAYS - 1, "day").startOf("day");
+    // Use UTC to ensure absolute alignment with D1 daily aggregates!
+    const nowUtc = dayjs().utc();
+    const nowLocal = dayjs().tz(tz);
+
+    // WAE covers the recent 90 days. We query from the start of the 89th day ago in UTC.
+    const waeStartUtc = nowUtc.subtract(WAE_RETENTION_DAYS - 1, "day").startOf("day");
     
-    // We pass absolute date strings to WAE instead of rolling intervals
-    const waeInterval = `range:${waeStart.toISOString()}|${now.toISOString()}`;
+    // We pass absolute date strings to WAE instead of rolling intervals.
+    // The start boundary perfectly aligns with D1's end boundary (UTC midnight).
+    const waeInterval = `range:${waeStartUtc.toISOString()}|${nowLocal.toISOString()}`;
 
     let totalDays: number;
     let requestedStart: dayjs.Dayjs;
 
     if (interval === "all") {
         if (earliestDate) {
-            requestedStart = dayjs(earliestDate).tz(tz);
+            requestedStart = dayjs.utc(earliestDate).startOf("day");
         } else {
-            requestedStart = waeStart;
+            requestedStart = waeStartUtc;
         }
-        totalDays = now.diff(requestedStart, "day");
+        totalDays = nowUtc.diff(requestedStart, "day");
     } else {
         const match = interval.match(/^(\d+)d$/);
         totalDays = match ? parseInt(match[1], 10) : WAE_RETENTION_DAYS;
-        requestedStart = now.subtract(totalDays, "day");
+        requestedStart = nowUtc.subtract(totalDays, "day").startOf("day");
     }
 
     // D1 covers from requested start up to the point where WAE takes over
     const d1StartDate = requestedStart.format("YYYY-MM-DD");
-    // D1 covers exactly up to the day before WAE starts
-    const d1EndDate = waeStart.subtract(1, "day").format("YYYY-MM-DD");
+    // D1 covers exactly up to the day before WAE starts (since WAE starts at 00:00 UTC)
+    const d1EndDate = waeStartUtc.subtract(1, "day").format("YYYY-MM-DD");
 
     return {
         d1StartDate,

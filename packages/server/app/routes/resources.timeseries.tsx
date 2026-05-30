@@ -12,6 +12,8 @@ import TimeSeriesChart from "~/components/TimeSeriesChart";
 import { SearchFilters } from "~/lib/types";
 import { requireAuth } from "~/lib/auth";
 import type { ViewsGroupedByInterval } from "~/analytics/query";
+import { isExtendedInterval } from "~/analytics/unified-query";
+import { buildCacheKey, getCachedOrFetch, hashFilters } from "~/analytics/cache-layer";
 
 export async function loader({
     context,
@@ -19,7 +21,7 @@ export async function loader({
 }: LoaderFunctionArgs) {
     await requireAuth(request, context.cloudflare.env);
 
-    const { analyticsEngine } = context;
+    const { unifiedQuery } = context;
     const { interval, site } = paramsFromUrl(request.url);
     const url = new URL(request.url);
     const tz = url.searchParams.get("timezone") || "UTC";
@@ -27,40 +29,59 @@ export async function loader({
 
     const intervalType = getIntervalType(interval);
     const { startDate, endDate } = getDateTimeRange(interval, tz);
+    const isExtended = isExtendedInterval(interval);
 
-    const viewsGroupedByInterval: ViewsGroupedByInterval =
-        await analyticsEngine.getViewsGroupedByInterval(
-            site,
-            intervalType,
-            startDate,
-            endDate,
-            tz,
-            filters,
-        );
+    const fetchData = async () => {
+        const viewsGroupedByInterval: ViewsGroupedByInterval =
+            await unifiedQuery.getViewsGroupedByInterval(
+                site,
+                intervalType,
+                startDate,
+                endDate,
+                tz,
+                filters,
+                interval
+            );
 
-    const chartData: {
-        date: string;
-        views: number;
-        visitors: number;
-        bounceRate: number;
-    }[] = [];
-    viewsGroupedByInterval.forEach((row) => {
-        const { views, visitors, bounces } = row[1];
+        const chartData: {
+            date: string;
+            views: number;
+            visitors: number;
+            bounceRate: number;
+        }[] = [];
+        viewsGroupedByInterval.forEach((row) => {
+            const { views, visitors, bounces } = row[1];
 
-        chartData.push({
-            date: row[0],
-            views,
-            visitors,
-            bounceRate: Math.floor(
-                (visitors > 0 ? bounces / visitors : 0) * 100,
-            ),
+            chartData.push({
+                date: row[0],
+                views,
+                visitors,
+                bounceRate: Math.floor(
+                    (visitors > 0 ? bounces / visitors : 0) * 100,
+                ),
+            });
         });
-    });
 
-    return {
-        chartData: chartData,
-        intervalType: intervalType,
+        return {
+            chartData: chartData,
+            intervalType: intervalType,
+        };
     };
+
+    if (isExtended) {
+        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+        const cacheKey = buildCacheKey("timeseries", {
+            site,
+            interval,
+            tz,
+            filters: filtersHash,
+        });
+
+        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+        return cacheResult.data;
+    } else {
+        return await fetchData();
+    }
 }
 
 export const TimeSeriesCard = ({

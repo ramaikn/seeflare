@@ -85,6 +85,9 @@ The dashboard displays all of these via resource routes:
 ## Resolved Decisions
 
 > [!NOTE]
+> **API Cache Key Isolation**: API routes must use distinct cache key prefixes (e.g., `api-analytics-stats` instead of `stats`) despite sharing the same underlying cache mechanism as the dashboard. This prevents Data Shape Collisions (Cache Poisoning) since the internal UI and public API expect slightly different JSON schemas (e.g., camelCase vs snake_case).
+
+> [!NOTE]
 > **API Authentication**: Use the same JWT authentication system as the dashboard. This keeps the API aligned with the existing security model and avoids adding setup complexity. A separate API key mechanism can be added later as an optional enhancement for third-party integrations.
 
 > [!NOTE]
@@ -538,7 +541,7 @@ GET /api/analytics/browsers?site={siteId}&interval={interval}
 
 All API routes:
 - Require authentication (same JWT auth as dashboard)
-- Use the same unified query + cache layer as the dashboard
+- Use the same unified query + cache layer as the dashboard, **but with distinct cache key prefixes** (e.g., `api-analytics-stats` instead of `stats`) to prevent Cache Poisoning and Data Shape Collisions between the internal dashboard UI and the external API.
 - Return JSON with consistent response envelope
 - Support pagination via `page` parameter
 - Support all filters the dashboard supports

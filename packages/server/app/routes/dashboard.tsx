@@ -56,8 +56,6 @@ export const meta: MetaFunction = () => {
     ];
 };
 
-const MAX_RETENTION_DAYS = 90;
-
 export const loader = async ({ context, request }: LoaderFunctionArgs) => {
     await requireAuth(request, context.cloudflare.env);
 
@@ -72,7 +70,7 @@ export const loader = async ({ context, request }: LoaderFunctionArgs) => {
             status: 501,
         });
     }
-    const { analyticsEngine } = context;
+    const { unifiedQuery } = context;
 
     const url = new URL(request.url);
 
@@ -87,7 +85,7 @@ export const loader = async ({ context, request }: LoaderFunctionArgs) => {
     // during the default interval (e.g. 7d)
     if (url.searchParams.has("site") === false) {
         const sitesByHits =
-            await analyticsEngine.getSitesOrderedByHits(interval);
+            await unifiedQuery.getSitesOrderedByHits(interval);
 
         // if at least one result
         const redirectSite = sitesByHits[0]?.[0] || "";
@@ -104,11 +102,9 @@ export const loader = async ({ context, request }: LoaderFunctionArgs) => {
     // initiate requests to AE in parallel
 
     // sites by hits: This is to populate the "sites" dropdown. We query the full retention
-    //                period (90 days) so that any site that has been active in the past 90 days
+    //                period (all) so that any site that has been active
     //                will show up in the dropdown.
-    const sitesByHits = analyticsEngine.getSitesOrderedByHits(
-        `${MAX_RETENTION_DAYS}d`,
-    );
+    const sitesByHits = unifiedQuery.getSitesOrderedByHits("all");
 
     const intervalType = getIntervalType(interval);
 

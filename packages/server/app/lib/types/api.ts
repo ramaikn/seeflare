@@ -46,7 +46,9 @@ export interface ApiAnalyticsResponse {
     referrers: ApiDimensionEntry[];
     countries: ApiDimensionEntry[];
     browsers: ApiDimensionEntry[];
+    browser_versions: ApiDimensionEntry[];
     devices: ApiDimensionEntry[];
+    device_models: ApiDimensionEntry[];
     utm: ApiUtmData;
 }
 

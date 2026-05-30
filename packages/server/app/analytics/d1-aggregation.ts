@@ -132,20 +132,11 @@ export async function getEarliestDataDate(
 ): Promise<string | null> {
     const result = await db
         .prepare(
-            "SELECT MIN(date) as earliest FROM daily_aggregates WHERE granularity = 'day'",
+            "SELECT MIN(date) as earliest FROM daily_aggregates",
         )
         .first<{ earliest: string | null }>();
 
-    if (result?.earliest) return result.earliest;
-
-    // Check monthly data too
-    const monthResult = await db
-        .prepare(
-            "SELECT MIN(date) as earliest FROM daily_aggregates WHERE granularity = 'month'",
-        )
-        .first<{ earliest: string | null }>();
-
-    return monthResult?.earliest ?? null;
+    return result?.earliest ?? null;
 }
 
 // ------------------------------------------------------------------
@@ -212,14 +203,11 @@ export async function aggregateDay(
 
         // Fetch each dimension separately to avoid 10k row limit cross-product truncation
         for (const col of columns) {
-            const countsMap = await api.getAllCountsByColumn(
+            const countsMap = await api.getAggregationCountsForColumn(
                 siteId,
                 col,
-                rangeInterval,
-                tz,
-                {}, // no filters
-                1,
-                10000 // Get up to 10k unique values per dimension
+                startDateTime,
+                endDateTime
             );
             
             for (const [val, counts] of Object.entries(countsMap)) {

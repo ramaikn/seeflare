@@ -3,6 +3,9 @@ import type { LoaderFunctionArgs } from "react-router";
 import { getFiltersFromSearchParams, paramsFromUrl } from "~/lib/utils";
 import PaginatedTableCard from "~/components/PaginatedTableCard";
 import { SearchFilters } from "~/lib/types";
+import { requireAuth } from "~/lib/auth";
+import { isExtendedInterval } from "~/analytics/unified-query";
+import { buildCacheKey, getCachedOrFetch, hashFilters } from "~/analytics/cache-layer";
 
 function convertCountryCodesToNames(
     countByCountry: [string, number][],
@@ -24,30 +27,52 @@ function convertCountryCodesToNames(
 }
 
 export async function loader({ context, request }: LoaderFunctionArgs) {
-    const { analyticsEngine } = context;
+    await requireAuth(request, context.cloudflare.env);
+    const { unifiedQuery } = context;
     const { interval, site, page = 1 } = paramsFromUrl(request.url);
     const url = new URL(request.url);
     const tz = url.searchParams.get("timezone") || "UTC";
     const filters = getFiltersFromSearchParams(url.searchParams);
 
-    const countsByCountry = await analyticsEngine.getCountByCountry(
-        site,
-        interval,
-        tz,
-        filters,
-        Number(page),
-    );
+    const isExtended = isExtendedInterval(interval);
+    const pageNum = Number(page);
 
-    // normalize country codes to country names
-    // NOTE: this must be done ONLY on server otherwise hydration mismatches
-    //       can occur because Intl.DisplayNames produces different results
-    //       in different browsers (see https://github.com/benvinegar/counterscale/issues/72)
-    const countsByProperty = convertCountryCodesToNames(countsByCountry);
+    const fetchData = async () => {
+        const countsByCountry = await unifiedQuery.getCountByCountry(
+            site,
+            interval,
+            tz,
+            filters,
+            pageNum,
+        );
 
-    return {
-        countsByProperty,
-        page: Number(page),
+        // normalize country codes to country names
+        // NOTE: this must be done ONLY on server otherwise hydration mismatches
+        //       can occur because Intl.DisplayNames produces different results
+        //       in different browsers (see https://github.com/benvinegar/counterscale/issues/72)
+        const countsByProperty = convertCountryCodesToNames(countsByCountry);
+
+        return {
+            countsByProperty,
+            page: pageNum,
+        };
     };
+
+    if (isExtended) {
+        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+        const cacheKey = buildCacheKey("country", {
+            site,
+            interval,
+            tz,
+            page: pageNum,
+            filters: filtersHash,
+        });
+
+        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+        return cacheResult.data;
+    } else {
+        return await fetchData();
+    }
 }
 
 export const CountryCard = ({

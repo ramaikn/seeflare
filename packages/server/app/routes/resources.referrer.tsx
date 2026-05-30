@@ -1,14 +1,15 @@
 import { useFetcher } from "react-router";
-
 import type { LoaderFunctionArgs } from "react-router";
-
 import PaginatedTableCard from "~/components/PaginatedTableCard";
-
 import { paramsFromUrl, getFiltersFromSearchParams } from "~/lib/utils";
 import { SearchFilters } from "~/lib/types";
+import { requireAuth } from "~/lib/auth";
+import { isExtendedInterval } from "~/analytics/unified-query";
+import { buildCacheKey, getCachedOrFetch, hashFilters } from "~/analytics/cache-layer";
 
 export async function loader({ context, request }: LoaderFunctionArgs) {
-    const { analyticsEngine } = context;
+    await requireAuth(request, context.cloudflare.env);
+    const { unifiedQuery } = context;
 
     const { interval, site, page = 1 } = paramsFromUrl(request.url);
 
@@ -16,16 +17,38 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
     const tz = url.searchParams.get("timezone") || "UTC";
     const filters = getFiltersFromSearchParams(url.searchParams);
 
-    return {
-        countsByProperty: await analyticsEngine.getCountByReferrer(
+    const isExtended = isExtendedInterval(interval);
+    const pageNum = Number(page);
+
+    const fetchData = async () => {
+        const countsByProperty = await unifiedQuery.getCountByReferrer(
             site,
             interval,
             tz,
             filters,
-            Number(page),
-        ),
-        page: Number(page),
+            pageNum,
+        );
+        return {
+            countsByProperty,
+            page: pageNum,
+        };
     };
+
+    if (isExtended) {
+        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+        const cacheKey = buildCacheKey("referrer", {
+            site,
+            interval,
+            tz,
+            page: pageNum,
+            filters: filtersHash,
+        });
+
+        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+        return cacheResult.data;
+    } else {
+        return await fetchData();
+    }
 }
 
 export const ReferrerCard = ({

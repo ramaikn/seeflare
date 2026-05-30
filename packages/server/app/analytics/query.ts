@@ -479,6 +479,55 @@ export class AnalyticsEngineAPI {
         );
         return returnPromise;
     }
+    async getAggregationCountsForColumn<T extends keyof typeof ColumnMappings>(
+        siteId: string,
+        column: T,
+        startDateTime: Date,
+        endDateTime: Date,
+    ): Promise<Record<string, AnalyticsCountResult>> {
+        const localStartTime = dayjs(startDateTime).utc();
+        const localEndTime = dayjs(endDateTime).utc();
+        const _column = ColumnMappings[column];
+
+        const query = `
+            SELECT ${_column} as key,
+                SUM(_sample_interval) as count,
+                ${ColumnMappings.newVisitor} as isVisitor,
+                ${ColumnMappings.bounce} as isBounce
+            FROM metricsDataset
+            WHERE timestamp >= toDateTime('${localStartTime.format("YYYY-MM-DD HH:mm:ss")}')
+                AND timestamp < toDateTime('${localEndTime.format("YYYY-MM-DD HH:mm:ss")}')
+                AND ${ColumnMappings.siteId} = '${siteId}'
+                AND ${_column} != ''
+            GROUP BY key, isVisitor, isBounce
+            LIMIT 10000
+        `;
+
+        type SelectionSet = {
+            key: string;
+            count: number;
+            isVisitor: number;
+            isBounce: number;
+        };
+
+        const queryResult = await this.query(query);
+        if (!queryResult.ok) {
+            throw new Error(queryResult.statusText);
+        }
+
+        const responseData = (await queryResult.json()) as AnalyticsQueryResult<SelectionSet>;
+
+        const result: Record<string, AnalyticsCountResult> = {};
+        responseData.data.forEach((row) => {
+            const key = row.key;
+            if (!result[key]) {
+                result[key] = { views: 0, visitors: 0, bounces: 0 };
+            }
+            accumulateCountsFromRowResult(result[key], row);
+        });
+
+        return result;
+    }
 
 
     async getAllCountsByColumn<T extends keyof typeof ColumnMappings>(
@@ -922,5 +971,66 @@ export class AnalyticsEngineAPI {
         });
 
         return returnPromise;
+    }
+    async getAllCountsByAllColumnsForAllSites(
+        columns: (keyof typeof ColumnMappings)[],
+        startDateTime: Date,
+        endDateTime: Date,
+    ): Promise<Map<any[], AnalyticsCountResult>> {
+        const localStartTime = dayjs(startDateTime).utc();
+        const localEndTime = dayjs(endDateTime).utc();
+
+        const columnSelects = columns.map(c => ColumnMappings[c]).join(', ');
+
+        const query = `
+            SELECT SUM(_sample_interval) as count,
+                toDateTime(toStartOfInterval(timestamp, INTERVAL '1' DAY, 'Etc/UTC'), 'Etc/UTC') as date,
+                ${ColumnMappings.siteId} as siteId,
+                ${ColumnMappings.newVisitor} as isVisitor,
+                ${ColumnMappings.bounce} as isBounce,
+                ${columnSelects}
+            FROM metricsDataset
+            WHERE timestamp >= toDateTime('${localStartTime.format("YYYY-MM-DD HH:mm:ss")}')
+                AND timestamp < toDateTime('${localEndTime.format("YYYY-MM-DD HH:mm:ss")}')
+            GROUP BY date, siteId, isVisitor, isBounce, ${columnSelects}
+        `;
+
+        type SelectionSet = {
+            count: number;
+            date: string;
+            siteId: string;
+            isVisitor: number;
+            isBounce: number;
+            [key: string]: any;
+        };
+
+        const queryResult = await this.query(query);
+        if (!queryResult.ok) {
+            throw new Error(queryResult.statusText);
+        }
+        const responseData = await queryResult.json() as AnalyticsQueryResult<SelectionSet>;
+
+        const resultMap = new Map<string, AnalyticsCountResult>();
+        const originalKeys = new Map<string, any[]>();
+
+        responseData.data.forEach((row) => {
+            const dateStr = dayjs(new Date(row.date)).format("YYYY-MM-DD");
+            const keyArray = [dateStr, row.siteId, ...columns.map(c => row[ColumnMappings[c]])];
+            const keyStr = JSON.stringify(keyArray);
+
+            if (!resultMap.has(keyStr)) {
+                resultMap.set(keyStr, { views: 0, visitors: 0, bounces: 0 });
+                originalKeys.set(keyStr, keyArray);
+            }
+            const counts = resultMap.get(keyStr)!;
+            accumulateCountsFromRowResult(counts, row);
+        });
+
+        const finalMap = new Map<any[], AnalyticsCountResult>();
+        resultMap.forEach((counts, keyStr) => {
+            finalMap.set(originalKeys.get(keyStr)!, counts);
+        });
+
+        return finalMap;
     }
 }
