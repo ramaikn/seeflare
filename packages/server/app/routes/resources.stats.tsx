@@ -44,11 +44,8 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
         // To figure out if we can give an answer or not, we inspect the earliest bounce/earliest event
         // data recorded, and determine if our dataset is "complete" for the given query interval.
 
-        const hasSufficientBounceData =
-            earliestBounce !== null &&
-            earliestEvent !== null &&
-            (earliestEvent.getTime() == earliestBounce.getTime() || // earliest event recorded a bounce -- any query is fine
-                earliestBounce < startDate); // earliest bounce occurred before start of query period -- this query is fine
+        // Always show bounce rate if it is calculated.
+        const hasSufficientBounceData = true;
 
         const bounceRate =
             counts.visitors > 0 ? counts.bounces / counts.visitors : undefined;
@@ -70,7 +67,7 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
             filters: filtersHash,
         });
 
-        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+        const cacheResult = await getCachedOrFetch(cacheKey, fetchData, 0);
         return cacheResult.data;
     } else {
         return await fetchData();

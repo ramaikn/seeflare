@@ -67,7 +67,7 @@ export function intervalToSql(
         case "today":
             // example: toDateTime('2024-01-07 00:00:00', 'America/New_York')
             startIntervalSql = `toDateTime('${dayjs().tz(tz).startOf("day").utc().format("YYYY-MM-DD HH:mm:ss")}')`;
-            endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+            endIntervalSql = `NOW()`;
             break;
         case "yesterday":
             startIntervalSql = `toDateTime('${dayjs().tz(tz).startOf("day").utc().subtract(1, "day").format("YYYY-MM-DD HH:mm:ss")}')`;
@@ -77,16 +77,16 @@ export function intervalToSql(
             // "all" goes back a very large number of days (e.g. 10 years). D1 handles most of it, but WAE handles recent 90 days.
             // If passed here directly without D1, it will query as far back as WAE stores data.
             startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '3650' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
-            endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+            endIntervalSql = `NOW()`;
             break;
         default:
             const match = interval.match(/^(\d+)d$/);
             if (match) {
                 startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '${match[1]}' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
-                endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+                endIntervalSql = `NOW()`;
             } else {
                 startIntervalSql = `toStartOfInterval(NOW() - INTERVAL '1' DAY, INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
-                endIntervalSql = `toStartOfInterval(NOW(), INTERVAL '${bucketIntervalMinutes}' MINUTE)`;
+                endIntervalSql = `NOW()`;
             }
             break;
     }

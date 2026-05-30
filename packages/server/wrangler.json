@@ -24,7 +24,7 @@
         {
             "binding": "ANALYTICS_DB",
             "database_name": "seeflare-analytics",
-            "database_id": "YOUR_D1_DATABASE_ID"
+            "database_id": "7b989900-d0c1-4f62-8ff1-921125378fed"
         }
     ],
     "triggers": {

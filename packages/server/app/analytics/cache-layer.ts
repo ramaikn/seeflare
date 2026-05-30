@@ -9,7 +9,7 @@
  */
 
 const CACHE_NAMESPACE = "https://seeflare-cache.internal";
-const DEFAULT_TTL_SECONDS = 86400; // 24 hours
+const DEFAULT_TTL_SECONDS = 60; // 1 minute for near real-time analytics
 
 /**
  * Generate a cache version string that automatically increments at 02:05 UTC.
@@ -19,7 +19,8 @@ const DEFAULT_TTL_SECONDS = 86400; // 24 hours
 function getCacheVersion(): string {
     // 02:05 UTC = 7500000 ms after midnight.
     // Must be AFTER the cron job (02:00 UTC) finishes writing new D1 data.
-    return Math.floor((Date.now() - 7500000) / 86400000).toString();
+    // Appended -v4 to bust any previously cached 24h entries
+    return Math.floor((Date.now() - 7500000) / 86400000).toString() + "-v4";
 }
 
 /**
