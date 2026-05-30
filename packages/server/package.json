@@ -21,8 +21,8 @@
     "scripts": {
         "dev": "react-router dev",
         "build": "react-router build",
-        "preview": "wrangler dev --var VERSION:`git rev-parse HEAD`",
-        "deploy": "wrangler deploy --var VERSION:`git rev-parse HEAD`",
+        "preview": "node -e \"const { execSync } = require('child_process'); const v = execSync('git rev-parse HEAD').toString().trim(); execSync('npx wrangler dev --var VERSION:' + v, { stdio: 'inherit' });\"",
+        "deploy": "node -e \"const { execSync } = require('child_process'); const v = execSync('git rev-parse HEAD').toString().trim(); execSync('npx wrangler deploy --var VERSION:' + v, { stdio: 'inherit' });\"",
         "lint": "eslint .",
         "test": "TZ=EST vitest run",
         "test-ci": "TZ=EST vitest run --coverage",
