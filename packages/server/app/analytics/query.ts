@@ -287,7 +287,8 @@ export class AnalyticsEngineAPI {
                     const response = await queryResult;
 
                     if (!response.ok) {
-                        reject(response.statusText);
+                        reject(new Error(`WAE API error: ${response.status} ${response.statusText}`));
+                        return;
                     }
 
                     const responseData =
@@ -392,7 +393,8 @@ export class AnalyticsEngineAPI {
                     const response = await queryResult;
 
                     if (!response.ok) {
-                        reject(response.statusText);
+                        reject(new Error(`WAE API error: ${response.status} ${response.statusText}`));
+                        return;
                     }
 
                     const responseData =
@@ -459,7 +461,8 @@ export class AnalyticsEngineAPI {
                 const response = await queryResult;
 
                 if (!response.ok) {
-                    reject(response.statusText);
+                    reject(new Error(`WAE API error: ${response.status} ${response.statusText}`));
+                    return;
                 }
 
                 const responseData =
@@ -601,7 +604,8 @@ export class AnalyticsEngineAPI {
                     const response = await queryResult;
 
                     if (!response.ok) {
-                        reject(response.statusText);
+                        reject(new Error(`WAE API error: ${response.status} ${response.statusText}`));
+                        return;
                     }
 
                     const responseData =

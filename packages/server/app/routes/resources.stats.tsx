@@ -58,19 +58,29 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
         };
     };
 
-    if (isExtended) {
-        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
-        const cacheKey = buildCacheKey("stats", {
-            site,
-            interval,
-            tz,
-            filters: filtersHash,
-        });
+    try {
+        if (isExtended) {
+            const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+            const cacheKey = buildCacheKey("stats", {
+                site,
+                interval,
+                tz,
+                filters: filtersHash,
+            });
 
-        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
-        return cacheResult.data;
-    } else {
-        return await fetchData();
+            const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+            return cacheResult.data;
+        } else {
+            return await fetchData();
+        }
+    } catch (error) {
+        console.error("stats loader error:", error);
+        return {
+            views: 0,
+            visitors: 0,
+            bounceRate: undefined,
+            hasSufficientBounceData: false,
+        };
     }
 }
 
@@ -92,11 +102,22 @@ export const StatsCard = ({
     const countFormatter = Intl.NumberFormat("en", { notation: "compact" });
 
     useEffect(() => {
+        // Sanitize filters: remove undefined/empty values to prevent
+        // "undefined" strings from being sent as query params
+        const cleanFilters: Record<string, string> = {};
+        if (filters) {
+            for (const [key, value] of Object.entries(filters)) {
+                if (value !== undefined && value !== null && value !== "") {
+                    cleanFilters[key] = String(value);
+                }
+            }
+        }
+
         const params = {
             site: siteId,
             interval,
             timezone,
-            ...filters,
+            ...cleanFilters,
         };
 
         dataFetcher.submit(params, {

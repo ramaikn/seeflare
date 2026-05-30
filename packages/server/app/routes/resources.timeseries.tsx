@@ -68,19 +68,27 @@ export async function loader({
         };
     };
 
-    if (isExtended) {
-        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
-        const cacheKey = buildCacheKey("timeseries", {
-            site,
-            interval,
-            tz,
-            filters: filtersHash,
-        });
+    try {
+        if (isExtended) {
+            const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+            const cacheKey = buildCacheKey("timeseries", {
+                site,
+                interval,
+                tz,
+                filters: filtersHash,
+            });
 
-        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
-        return cacheResult.data;
-    } else {
-        return await fetchData();
+            const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+            return cacheResult.data;
+        } else {
+            return await fetchData();
+        }
+    } catch (error) {
+        console.error("timeseries loader error:", error);
+        return {
+            chartData: [],
+            intervalType: intervalType,
+        };
     }
 }
 
@@ -99,11 +107,22 @@ export const TimeSeriesCard = ({
     const { chartData, intervalType } = dataFetcher.data || {};
 
     useEffect(() => {
+        // Sanitize filters: remove undefined/empty values to prevent
+        // "undefined" strings from being sent as query params
+        const cleanFilters: Record<string, string> = {};
+        if (filters) {
+            for (const [key, value] of Object.entries(filters)) {
+                if (value !== undefined && value !== null && value !== "") {
+                    cleanFilters[key] = String(value);
+                }
+            }
+        }
+
         const params = {
             site: siteId,
             interval,
             timezone,
-            ...filters,
+            ...cleanFilters,
         };
 
         dataFetcher.submit(params, {

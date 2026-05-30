@@ -58,20 +58,25 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
         };
     };
 
-    if (isExtended) {
-        const filtersHash = hashFilters(filters as Record<string, string | undefined>);
-        const cacheKey = buildCacheKey("country", {
-            site,
-            interval,
-            tz,
-            page: pageNum,
-            filters: filtersHash,
-        });
+    try {
+        if (isExtended) {
+            const filtersHash = hashFilters(filters as Record<string, string | undefined>);
+            const cacheKey = buildCacheKey("country", {
+                site,
+                interval,
+                tz,
+                page: pageNum,
+                filters: filtersHash,
+            });
 
-        const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
-        return cacheResult.data;
-    } else {
-        return await fetchData();
+            const cacheResult = await getCachedOrFetch(cacheKey, fetchData);
+            return cacheResult.data;
+        } else {
+            return await fetchData();
+        }
+    } catch (error) {
+        console.error("country loader error:", error);
+        return { countsByProperty: [], page: pageNum };
     }
 }
 

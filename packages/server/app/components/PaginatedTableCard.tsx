@@ -32,11 +32,22 @@ const PaginatedTableCard = ({
     const [page, setPage] = useState(1);
 
     useEffect(() => {
+        // Sanitize filters: remove undefined/empty values to prevent
+        // "undefined" strings from being sent as query params
+        const cleanFilters: Record<string, string> = {};
+        if (filters) {
+            for (const [key, value] of Object.entries(filters)) {
+                if (value !== undefined && value !== null && value !== "") {
+                    cleanFilters[key] = String(value);
+                }
+            }
+        }
+
         const params = {
             site: siteId,
             interval,
             timezone,
-            ...filters,
+            ...cleanFilters,
             page,
         };
 
