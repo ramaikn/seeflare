@@ -7,10 +7,10 @@
 Seeflare is a modified version of Counterscale. While the original Counterscale was built with a simple philosophy using only Cloudflare Workers Analytics Engine (WAE) (which has a 90-day data retention limit), Seeflare introduces a new architecture to keep historical data forever without bloated costs. 
 
 **Key Changes in Seeflare:**
-- Transitioned from a simple WAE-only approach to a **WAE + D1 (SQLite) + R2** architecture.
+- Transitioned from a simple WAE-only approach to a **WAE + D1 (SQLite)** architecture.
 - Uses WAE for fast real-time data ingestion.
-- Uses a daily Cron Job to aggregate and store historical data in D1, allowing infinite data retention.
-- Uses R2 for raw data backups.
+- Uses a daily Cron Job to aggregate and store historical data in D1, allowing infinite data retention beyond WAE's 90-day limit.
+- Implements an intelligent D1 Cache layer for all complex queries to minimize WAE costs and significantly boost dashboard loading speed.
 - Implements a unified query engine that seamlessly merges recent WAE data with historical D1 data on the dashboard.
 
 For a detailed explanation of the new system, please read the full documentation here: **[Seeflare Architecture & How It Works](./how/en-how-it-work.md)**.

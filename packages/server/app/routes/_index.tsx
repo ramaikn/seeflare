@@ -5,8 +5,8 @@ import { getUser, login, isAuthEnabled } from "~/lib/auth";
 
 export const meta: MetaFunction = () => {
     return [
-        { title: "Counterscale: Web Analytics" },
-        { name: "description", content: "Counterscale: Web Analytics" },
+        { title: "Seeflare: Web Analytics" },
+        { name: "description", content: "Seeflare: Web Analytics" },
     ];
 };
 
@@ -51,13 +51,13 @@ export default function Index() {
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
             <img
                 src="/counterscale-logo.webp"
-                alt="CounterScale Logo"
+                alt="Seeflare Logo"
                 className="w-72"
             />
             <Card className="w-full max-w-md p-8 text-center">
                 <div className="mb-6">
                     <h1 className="text-2xl font-bold text-foreground mb-2">
-                        Welcome to Counterscale
+                        Welcome to Seeflare
                     </h1>
                     <p className="text-muted-foreground">
                     {!authEnabled 

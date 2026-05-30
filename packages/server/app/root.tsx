@@ -83,7 +83,7 @@ export const Layout = ({ children = [] }: { children: React.ReactNode }) => {
                 
                 <meta property="og:url" content={data.url} />
                 <meta property="og:type" content="website" />
-                <meta property="og:title" content="Counterscale" />
+                <meta property="og:title" content="Seeflare" />
                 <meta
                     property="og:description"
                     content="Scalable web analytics you run yourself on Cloudflare"
@@ -96,7 +96,7 @@ export const Layout = ({ children = [] }: { children: React.ReactNode }) => {
                 <meta name="twitter:card" content="summary_large_image" />
                 <meta property="twitter:domain" content="counterscale.dev" />
                 <meta property="twitter:url" content={data.url} />
-                <meta name="twitter:title" content="Counterscale" />
+                <meta name="twitter:title" content="Seeflare" />
                 <meta
                     name="twitter:description"
                     content="Scalable web analytics you run yourself on Cloudflare"
@@ -183,12 +183,12 @@ export default function App() {
                 <nav className="flex justify-between items-center">
                     <div className="flex items-center">
                         <a href={homeUrl} className="text-lg font-bold">
-                            Counterscale
+                            Seeflare
                         </a>
                         <img
                             className="w-6 ml-1"
                             src="/img/arrow.svg"
-                            alt="Counterscale Icon"
+                            alt="Seeflare Icon"
                         />
                     </div>
                     <div className="flex items-center font-small font-medium text-md">
@@ -233,7 +233,24 @@ export default function App() {
 
             <footer className="py-4 flex justify-end text-s">
                 <div>
-                    Version{" "}
+                    <a
+                        href="https://github.com/ramaikn/seeflare"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                    >
+                        Seeflare
+                    </a>
+                    ,{" "}
+                    <a
+                        href="https://github.com/benvinegar/counterscale"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                    >
+                        counterscale
+                    </a>{" "}
+                    fork. Version{" "}
                     {data.version ? (
                         <a
                             href={data.version.url as string}

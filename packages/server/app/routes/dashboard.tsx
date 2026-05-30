@@ -52,8 +52,8 @@ import { buildCacheKey, getCachedOrFetch } from "~/analytics/cache-layer";
 
 export const meta: MetaFunction = () => {
     return [
-        { title: "Counterscale: Web Analytics" },
-        { name: "description", content: "Counterscale: Web Analytics" },
+        { title: "Seeflare: Web Analytics" },
+        { name: "description", content: "Seeflare: Web Analytics" },
     ];
 };
 
