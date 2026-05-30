@@ -1,7 +1,15 @@
 import { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction, Form, useActionData, useLoaderData, useNavigation, redirect } from "react-router";
+import { useState, useEffect } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { getUser, login, isAuthEnabled } from "~/lib/auth";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "~/components/ui/select";
 
 export const meta: MetaFunction = () => {
     return [
@@ -46,6 +54,42 @@ export default function Index() {
     const actionData = useActionData<typeof action>();
     const navigation = useNavigation();
     const isSubmitting = ["submitting", "loading"].includes(navigation.state);
+
+    const [theme, setTheme] = useState<"light" | "dark" | "legacy">("light");
+
+    useEffect(() => {
+        const getThemeFromClass = () => {
+            const root = document.documentElement;
+            if (root.classList.contains("dark")) return "dark";
+            if (root.classList.contains("legacy")) return "legacy";
+            return "light";
+        };
+
+        setTheme(getThemeFromClass());
+
+        const observer = new MutationObserver(() => {
+            setTheme(getThemeFromClass());
+        });
+
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["class"],
+        });
+
+        return () => observer.disconnect();
+    }, []);
+
+    const changeTheme = (newTheme: "light" | "dark" | "legacy") => {
+        const root = document.documentElement;
+        root.classList.remove("dark", "legacy");
+        if (newTheme === "dark") {
+            root.classList.add("dark");
+        } else if (newTheme === "legacy") {
+            root.classList.add("legacy");
+        }
+        localStorage.setItem("theme", newTheme);
+        setTheme(newTheme);
+    };
 
     return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
@@ -99,6 +143,24 @@ export default function Index() {
                         </Button>
                     </Form>
                 )}
+
+                <div className="mt-6 pt-6 border-t flex justify-center items-center gap-2">
+                    <div className="min-w-[130px]">
+                        <Select
+                            value={theme}
+                            onValueChange={(val) => changeTheme(val as "light" | "dark" | "legacy")}
+                        >
+                            <SelectTrigger className="font-semibold">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="light">Light Mode</SelectItem>
+                                <SelectItem value="dark">Dark Mode</SelectItem>
+                                <SelectItem value="legacy">Legacy Mode</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
             </Card>
         </div>
     );

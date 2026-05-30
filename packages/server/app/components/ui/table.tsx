@@ -71,7 +71,7 @@ const TableRow = React.forwardRef<
             style={
                 width !== undefined
                     ? {
-                          background: `linear-gradient(90deg, hsl(var(--barchart)) ${width}, transparent ${width})`,
+                          background: `linear-gradient(90deg, hsl(var(--barchart) / var(--barchart-opacity, 1)) ${width}, transparent ${width})`,
                       }
                     : {}
             }

@@ -30,10 +30,11 @@
 
         --border: 0 0% 90%;
         --barchart: 32.89 89.4% 70.39%;
+        --barchart-opacity: 1.0;
 
         --palette-darkgrey: 167.14 14% 39.22%;
         --input: 0 0% 90%;
-        --ring: 24.6 95% 53.1%;
+        --ring: 0 0% 60%;
 
         --radius: 0.5rem;
     }
@@ -65,8 +66,9 @@
 
         --border: 0 0% 20%;
         --barchart: 32.89 89.4% 70.39%;
+        --barchart-opacity: 0.3;
         --input: 0 0% 20%;
-        --ring: 24.6 95% 53.1%;
+        --ring: 0 0% 40%;
     }
 
     .legacy {
@@ -96,6 +98,7 @@
 
         --border: 15 90% 60%;
         --barchart: 32.89 89.4% 70.39%;
+        --barchart-opacity: 1.0;
 
         --palette-darkgrey: 167.14 14% 39.22%;
         --input: 15 90% 60%;
