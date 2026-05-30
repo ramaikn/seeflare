@@ -138,13 +138,20 @@ export default function Dashboard() {
     const navigation = useNavigation();
     const loading = navigation.state === "loading";
 
-    const [isDark, setIsDark] = useState(false);
+    const [theme, setTheme] = useState<"light" | "dark" | "legacy">("light");
 
     useEffect(() => {
-        setIsDark(document.documentElement.classList.contains("dark"));
+        const getThemeFromClass = () => {
+            const root = document.documentElement;
+            if (root.classList.contains("dark")) return "dark";
+            if (root.classList.contains("legacy")) return "legacy";
+            return "light";
+        };
+
+        setTheme(getThemeFromClass());
 
         const observer = new MutationObserver(() => {
-            setIsDark(document.documentElement.classList.contains("dark"));
+            setTheme(getThemeFromClass());
         });
 
         observer.observe(document.documentElement, {
@@ -155,17 +162,16 @@ export default function Dashboard() {
         return () => observer.disconnect();
     }, []);
 
-    const toggleTheme = () => {
+    const changeTheme = (newTheme: "light" | "dark" | "legacy") => {
         const root = document.documentElement;
-        if (root.classList.contains("dark")) {
-            root.classList.remove("dark");
-            localStorage.setItem("theme", "light");
-            setIsDark(false);
-        } else {
+        root.classList.remove("dark", "legacy");
+        if (newTheme === "dark") {
             root.classList.add("dark");
-            localStorage.setItem("theme", "dark");
-            setIsDark(true);
+        } else if (newTheme === "legacy") {
+            root.classList.add("legacy");
         }
+        localStorage.setItem("theme", newTheme);
+        setTheme(newTheme);
     };
 
     function changeSite(site: string) {
@@ -270,9 +276,21 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex items-center">
-                    <Button variant="outline" onClick={toggleTheme} className="font-semibold">
-                        {isDark ? "Light Mode" : "Dark Mode"}
-                    </Button>
+                    <div className="min-w-[130px]">
+                        <Select
+                            value={theme}
+                            onValueChange={(val) => changeTheme(val as "light" | "dark" | "legacy")}
+                        >
+                            <SelectTrigger className="font-semibold">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="light">Light Mode</SelectItem>
+                                <SelectItem value="dark">Dark Mode</SelectItem>
+                                <SelectItem value="legacy">Legacy Mode</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
             </div>
 

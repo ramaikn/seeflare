@@ -115,8 +115,12 @@ export const Layout = ({ children = [] }: { children: React.ReactNode }) => {
                                     var saved = localStorage.getItem('theme');
                                     if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                                         document.documentElement.classList.add('dark');
-                                    } else {
+                                        document.documentElement.classList.remove('legacy');
+                                    } else if (saved === 'legacy') {
+                                        document.documentElement.classList.add('legacy');
                                         document.documentElement.classList.remove('dark');
+                                    } else {
+                                        document.documentElement.classList.remove('dark', 'legacy');
                                     }
                                 } catch (e) {}
                             })();
@@ -142,35 +146,6 @@ export const Layout = ({ children = [] }: { children: React.ReactNode }) => {
 
 export default function App() {
     const data = useLoaderData<typeof loader>();
-    const [isDark, setIsDark] = useState(false);
-
-    useEffect(() => {
-        setIsDark(document.documentElement.classList.contains("dark"));
-
-        const observer = new MutationObserver(() => {
-            setIsDark(document.documentElement.classList.contains("dark"));
-        });
-
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ["class"],
-        });
-
-        return () => observer.disconnect();
-    }, []);
-
-    const toggleTheme = () => {
-        const root = document.documentElement;
-        if (root.classList.contains("dark")) {
-            root.classList.remove("dark");
-            localStorage.setItem("theme", "light");
-            setIsDark(false);
-        } else {
-            root.classList.add("dark");
-            localStorage.setItem("theme", "dark");
-            setIsDark(true);
-        }
-    };
 
     // Check if current domain is a subdomain of counterscale.dev
     const currentOrigin = new URL(data.url).hostname;
@@ -192,13 +167,6 @@ export default function App() {
                         />
                     </div>
                     <div className="flex items-center font-small font-medium text-md">
-                        <button
-                            onClick={toggleTheme}
-                            className="mr-2 font-medium hover:text-primary transition-colors bg-transparent border-0 p-0 text-foreground cursor-pointer"
-                            style={{ font: "inherit", color: "inherit" }}
-                        >
-                            {isDark ? "Dark Mode" : "Light Mode"}
-                        </button>
                         <a href="/dashboard">Dashboard</a>
                         <a
                             href="/admin-redirect"
