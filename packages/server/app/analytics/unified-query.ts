@@ -126,11 +126,23 @@ export function computeDateRangeSplit(
 function mergeTimeSeries(
     d1Data: [string, D1AnalyticsCountResult][],
     waeData: ViewsGroupedByInterval,
+    d1StartDate: string,
+    endDateTime: Date,
 ): ViewsGroupedByInterval {
     const merged = new Map<
         string,
         { views: number; visitors: number; bounces: number }
     >();
+
+    // Pre-populate merged map with 0s for every day in the requested range to ensure UX consistency
+    const startUtc = dayjs.utc(d1StartDate).startOf("day");
+    const endUtc = dayjs(endDateTime).utc().startOf("day");
+    let current = startUtc;
+    while (current.isBefore(endUtc) || current.isSame(endUtc, "day")) {
+        const key = current.format("YYYY-MM-DD 00:00:00");
+        merged.set(key, { views: 0, visitors: 0, bounces: 0 });
+        current = current.add(1, "day");
+    }
 
     // Insert D1 data first
     for (const [dateStr, counts] of d1Data) {
@@ -363,7 +375,7 @@ export class UnifiedAnalyticsQuery {
             filters,
         );
 
-        const merged = mergeTimeSeries(d1Data, waeData);
+        const merged = mergeTimeSeries(d1Data, waeData, d1StartDate, endDateTime);
         // Fix negative bounces in merged D1+WAE data (mirrors WAE-only correction in query.ts)
         fixNegativeBounces(merged);
 
