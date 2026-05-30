@@ -12,6 +12,7 @@ Seeflare is a modified version of Counterscale. While the original Counterscale 
 - Uses a daily Cron Job to aggregate and store historical data in D1, allowing infinite data retention beyond WAE's 90-day limit.
 - Implements an intelligent D1 Cache layer for all complex queries to minimize WAE costs and significantly boost dashboard loading speed.
 - Implements a unified query engine that seamlessly merges recent WAE data with historical D1 data on the dashboard.
+- Features built-in **Dark / Light mode** support for a customizable dashboard experience.
 
 For a detailed explanation of the new system, please read the full documentation here: **[Seeflare Architecture & How It Works](./how/en-how-it-work.md)**.
 
