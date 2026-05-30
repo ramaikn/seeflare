@@ -86,4 +86,46 @@ describe("UnifiedAnalyticsQuery - getViewsGroupedByInterval Padding", () => {
 
         vi.useRealTimers();
     });
+
+    test("should ensure 'all' interval covers at least 5 years (1825 days) when DB data is recent", async () => {
+        const systemTime = new Date("2026-05-31T12:00:00Z");
+        vi.useFakeTimers();
+        vi.setSystemTime(systemTime);
+
+        // Mock database earliest date to March 1st, 2026 (very recent)
+        vi.mocked(getEarliestDataDate).mockResolvedValue("2026-03-01");
+
+        // Mock D1 to return data starting March 1st
+        vi.mocked(getD1ViewsGroupedByInterval).mockResolvedValue([
+            ["2026-03-01 00:00:00", { views: 5, visitors: 2, bounces: 0 }],
+        ]);
+
+        // Mock WAE to return data starting March 3rd
+        mockAnalyticsEngine.getViewsGroupedByInterval.mockResolvedValue([
+            ["2026-03-03 00:00:00", { views: 10, visitors: 4, bounces: 0 }],
+        ]);
+
+        const startDateTime = dayjs().subtract(3650, "day").toDate(); // Passed 10y for "all"
+        const endDateTime = systemTime;
+
+        const result = await query.getViewsGroupedByInterval(
+            "test-site",
+            "MONTH", // "all" uses MONTH
+            startDateTime,
+            endDateTime,
+            "UTC",
+            {},
+            "all",
+        );
+
+        // Five years ago from 2026-05-31 is 2021-06-01
+        // Let's verify the first returned month starts 5 years ago (June 2021)
+        expect(result[0][0]).toBe("2021-06-01 00:00:00");
+        expect(result[0][1]).toEqual({ views: 0, visitors: 0, bounces: 0 });
+
+        // Let's verify total months: 5 years + current partial year (June 2021 to May 2026 = 60 months)
+        expect(result.length).toBe(60);
+
+        vi.useRealTimers();
+    });
 });

@@ -89,10 +89,12 @@ export function computeDateRangeSplit(
     let requestedStart: dayjs.Dayjs;
 
     if (interval === "all") {
+        const fiveYearsAgo = nowUtc.subtract(1825, "day").startOf("day");
         if (earliestDate) {
-            requestedStart = dayjs.utc(earliestDate).startOf("day");
+            const dbStart = dayjs.utc(earliestDate).startOf("day");
+            requestedStart = dbStart.isBefore(fiveYearsAgo) ? dbStart : fiveYearsAgo;
         } else {
-            requestedStart = waeStartUtc;
+            requestedStart = fiveYearsAgo;
         }
         totalDays = nowUtc.diff(requestedStart, "day");
     } else {

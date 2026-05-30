@@ -85,8 +85,8 @@ export function getIntervalType(interval: string): IntervalType {
         case "7d":
         case "30d":
         case "90d":
-            return "DAY";
         case "120d":
+            return "DAY";
         case "365d":
             return "WEEK";
         case "1095d":
